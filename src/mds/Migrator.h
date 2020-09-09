@@ -278,11 +278,11 @@ protected:
   void import_reverse_discovering(dirfrag_t df);
   void import_reverse_discovered(dirfrag_t df, CInode *diri);
   void import_reverse_prepping(CDir *dir, import_state_t& stat);
-  void import_remove_pins(CDir *dir, std::set<CDir*>& bounds);
+  void import_remove_pins(CDir *dir, import_state_t& stat);
   void import_reverse_unfreeze(CDir *dir);
   void import_reverse_final(CDir *dir);
-  void import_notify_abort(CDir *dir, std::set<CDir*>& bounds);
-  void import_notify_finish(CDir *dir, std::set<CDir*>& bounds);
+  void import_notify_abort(CDir *dir, import_state_t& stat);
+  void import_notify_finish(CDir *dir, import_state_t& stat);
   void import_logged_start(dirfrag_t df, CDir *dir, mds_rank_t from,
 			   std::map<client_t,std::pair<Session*,uint64_t> >& imported_session_map);
   void handle_export_finish(const cref_t<MExportDirFinish> &m);
