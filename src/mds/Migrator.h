@@ -234,7 +234,7 @@ protected:
   // import fun
   struct import_state_t;
 
-  typedef std::map<CDir*, export_state_t>::iterator export_state_iterator;
+  typedef std::map<dirfrag_t, export_state_t>::iterator export_state_iterator;
 
   friend class C_MDC_ExportFreeze;
   friend class C_MDS_ExportFinishLogged;
@@ -249,22 +249,22 @@ protected:
   friend class C_M_LoggedImportCaps;
 
   void handle_export_discover_ack(const cref_t<MExportDirDiscoverAck> &m);
-  void export_frozen(CDir *dir, uint64_t tid);
+  void export_frozen(dirfrag_t df, uint64_t tid);
   void handle_export_prep_ack(const cref_t<MExportDirPrepAck> &m);
-  void export_sessions_flushed(CDir *dir, uint64_t tid);
-  void export_go(CDir *dir);
-  void export_go_synced(CDir *dir, uint64_t tid);
+  void export_sessions_flushed(dirfrag_t df, uint64_t tid);
+  void export_go(export_state_t& stat);
+  void export_go_synced(dirfrag_t df, uint64_t tid);
   void export_try_cancel(CDir *dir, bool notify_peer=true);
   void export_cancel_finish(export_state_iterator& it);
-  void export_reverse(CDir *dir, export_state_t& stat);
-  void export_notify_abort(CDir *dir, export_state_t& stat, std::set<CDir*>& bounds);
+  void export_reverse(export_state_t& stat);
+  void export_notify_abort(export_state_t& stat, std::set<CDir*>& bounds);
   void handle_export_ack(const cref_t<MExportDirAck> &m);
   void export_logged_finish(CDir *dir);
   void handle_export_notify_ack(const cref_t<MExportDirNotifyAck> &m);
   void export_finish(CDir *dir);
   void child_export_finish(std::shared_ptr<export_base_t>& parent, bool success);
-  void encode_export_prep_trace(bufferlist& bl, CDir *bound, CDir *dir, export_state_t &es,
-                               std::set<inodeno_t> &inodes_added, std::set<dirfrag_t> &dirfrags_added);
+  void encode_export_prep_trace(bufferlist& bl, CDir *bound, export_state_t &stat,
+				std::set<inodeno_t> &inodes_added, std::set<dirfrag_t> &dirfrags_added);
   void decode_export_prep_trace(bufferlist::const_iterator& blp, mds_rank_t oldauth, std::vector<MDSContext*> &finished);
 
   void handle_gather_caps(const cref_t<MGatherCaps> &m);
@@ -297,7 +297,7 @@ protected:
   // bystander
   void handle_export_notify(const cref_t<MExportDirNotify> &m);
 
-  std::map<CDir*, export_state_t>  export_state;
+  std::map<dirfrag_t, export_state_t> export_state;
 
   uint64_t total_exporting_size = 0;
   unsigned num_locking_exports = 0; // exports in locking state (approx_size == 0)
