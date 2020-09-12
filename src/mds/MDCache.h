@@ -470,9 +470,6 @@ class MDCache {
     uncommitted_leaders[reqid].peers = peers;
     uncommitted_leaders[reqid].safe = safe;
   }
-  void wait_for_uncommitted_leader(metareqid_t reqid, MDSContext *c) {
-    uncommitted_leaders[reqid].waiters.push_back(c);
-  }
   bool have_uncommitted_leader(metareqid_t reqid, mds_rank_t from) {
     auto p = uncommitted_leaders.find(reqid);
     return p != uncommitted_leaders.end() && p->second.peers.count(from) > 0;
@@ -483,10 +480,7 @@ class MDCache {
   void committed_leader_peer(metareqid_t r, mds_rank_t from);
   void finish_committed_leaders();
 
-  void add_uncommitted_peer(metareqid_t reqid, LogSegmentRef const& , mds_rank_t, MDPeerUpdate *su=nullptr);
-  void wait_for_uncommitted_peer(metareqid_t reqid, MDSContext *c) {
-    uncommitted_peers.at(reqid).waiters.push_back(c);
-  }
+  void add_uncommitted_peer(metareqid_t reqid, LogSegmentRef const&, mds_rank_t, MDPeerUpdate *su=nullptr);
   void finish_uncommitted_peer(metareqid_t reqid, bool assert_exist=true);
   MDPeerUpdate* get_uncommitted_peer(metareqid_t reqid, mds_rank_t leader);
   void _logged_peer_commit(mds_rank_t from, metareqid_t reqid);
@@ -1086,9 +1080,6 @@ private:
   void send_dentry_link(CDentry *dn, const MDRequestRef& mdr);
   void send_dentry_unlink(CDentry *dn, CDentry *straydn, const MDRequestRef& mdr);
 
-  void wait_for_uncommitted_fragment(dirfrag_t dirfrag, MDSContext *c) {
-    uncommitted_fragments.at(dirfrag).waiters.push_back(c);
-  }
   bool is_any_uncommitted_fragment() const {
     return !uncommitted_fragments.empty();
   }
@@ -1230,7 +1221,6 @@ private:
     uleader() {}
     std::set<mds_rank_t> peers;
     LogSegmentRef ls = nullptr;
-    std::vector<MDSContext*> waiters;
     bool safe = false;
     bool committing = false;
     bool recovering = false;
@@ -1241,7 +1231,6 @@ private:
     mds_rank_t leader;
     LogSegmentRef ls = nullptr;
     MDPeerUpdate *su = nullptr;
-    std::vector<MDSContext*> waiters;
   };
 
   struct open_ino_info_t {
