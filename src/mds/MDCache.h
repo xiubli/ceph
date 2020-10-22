@@ -488,7 +488,6 @@ class MDCache {
   void handle_mds_failure(mds_rank_t who);
   void handle_mds_recovery(mds_rank_t who);
 
-  void recalc_auth_bits(bool replay);
   void remove_inode_recursive(CInode *in);
 
   bool is_ambiguous_peer_update(metareqid_t reqid, mds_rank_t leader) {
@@ -787,12 +786,9 @@ private:
   // trimming
   std::pair<bool, uint64_t> trim(uint64_t count=0);
 
-  bool trim_non_auth_subtree(CDir *directory);
+  void trim_non_auth_subtree(CDir *dir, int depth=0);
   void standby_trim_segment(LogSegmentRef const& ls);
   void try_trim_non_auth_subtree(CDir *dir);
-  bool can_trim_non_auth_dirfrag(CDir *dir) {
-    return uncommitted_peer_rename_olddir.count(dir->inode) == 0;
-  }
 
   /**
    * For all unreferenced inodes, dirs, dentries below an inode, compose
@@ -882,8 +878,11 @@ private:
   MDSCacheObject *get_object(const MDSCacheObjectInfo &info);
 
   void add_inode(CInode *in);
-
   void remove_inode(CInode *in);
+
+  CInode* create_unconnected_inode(inodeno_t ino, int mode);
+  void add_unconnected_inode(CInode *in);
+  void remove_unconnected_inode(CInode *in);
 
   void touch_dentry(CDentry *dn) {
     if (dn->state_test(CDentry::STATE_BOTTOMLRU)) {
@@ -1275,7 +1274,6 @@ private:
 				      std::set<SimpleLock *>& gather_locks);
   void handle_cache_rejoin_ack(const cref_t<MMDSCacheRejoin> &m);
   void rejoin_send_acks();
-  void rejoin_trim_undef_inodes();
   void maybe_send_pending_rejoins() {
     if (rejoins_pending)
       rejoin_send_rejoins();
@@ -1331,6 +1329,7 @@ private:
 
   std::unordered_map<inodeno_t, CInode*> inode_map;  // map of head inodes by ino
   std::map<vinodeno_t, CInode*> snap_inode_map;  // map of snap inodes by ino
+
   CInode *root = nullptr; // root inode
   CInode *myin = nullptr; // .ceph/mds%d dir
 
@@ -1340,6 +1339,7 @@ private:
   int stray_fragmenting_index = -1;
 
   std::set<CInode*> base_inodes;
+  std::set<CInode*> unconnected_inodes;
 
   std::unique_ptr<PerfCounters> logger;
 

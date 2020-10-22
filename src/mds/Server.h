@@ -359,7 +359,6 @@ public:
   bool _rename_prepare_witness(const MDRequestRef& mdr, mds_rank_t who, std::set<mds_rank_t> &witnesse,
 			       std::vector<CDentry*>& srctrace, std::vector<CDentry*>& dsttrace, CDentry *straydn);
   version_t _rename_prepare_import(const MDRequestRef& mdr, CDentry *srcdn, bufferlist *client_map_bl);
-  bool _need_force_journal(CInode *diri, bool empty);
   void _rename_prepare(const MDRequestRef& mdr,
 		       EMetaBlob *metablob, bufferlist *client_map_bl,
 		       CDentry *srcdn, CDentry *destdn, std::string_view alternate_name,
