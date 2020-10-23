@@ -8714,11 +8714,6 @@ void Server::_unlink_local(const MDRequestRef& mdr, CDentry *dn, CDentry *strayd
     in->first = straydn->first;
   }
 
-  if (in->is_dir()) {
-    ceph_assert(straydn);
-    mdcache->project_subtree_rename(in, dn->get_dir(), straydn->get_dir());
-  }
-
   journal_and_reply(mdr, 0, dn, le, new C_MDS_unlink_local_finish(this, mdr, dn, straydn));
 }
 
@@ -8760,7 +8755,7 @@ void Server::_unlink_local_finish(const MDRequestRef& mdr,
   if (straydn) {
     // update subtree map?
     if (strayin->is_dir())
-      mdcache->adjust_subtree_after_rename(strayin, dn->get_dir(), true);
+      mdcache->adjust_subtree_after_rename(strayin, dn->get_dir());
 
     if (strayin->snaprealm && !hadrealm)
       mdcache->do_realm_invalidate_and_update_notify(strayin, CEPH_SNAP_OP_SPLIT, false);
@@ -8907,7 +8902,6 @@ void Server::handle_peer_rmdir_prep(const MDRequestRef& mdr)
   dout(10) << " noting renamed (unlinked) dir ino " << in->ino() << " in metablob" << dendl;
   le->commit.renamed_dirino = in->ino();
 
-  mdcache->project_subtree_rename(in, dn->get_dir(), straydn->get_dir());
   mdcache->add_uncommitted_peer(mdr->reqid, mdr->ls, mdr->peer_to_mds);
 
   mdr->more()->peer_update_journaled = true;
@@ -8936,7 +8930,7 @@ void Server::_logged_peer_rmdir(const MDRequestRef& mdr, CDentry *dn, CDentry *s
   straydn->pop_projected_linkage();
   dn->pop_projected_linkage();
 
-  mdcache->adjust_subtree_after_rename(in, dn->get_dir(), mdr->more()->peer_update_journaled);
+  mdcache->adjust_subtree_after_rename(in, dn->get_dir());
 
   if (new_realm)
       mdcache->do_realm_invalidate_and_update_notify(in, CEPH_SNAP_OP_SPLIT, false);
@@ -9079,7 +9073,6 @@ void Server::do_rmdir_rollback(bufferlist &rbl, mds_rank_t leader, const MDReque
   dout(10) << " noting renamed (unlinked) dir ino " << in->ino() << " in metablob" << dendl;
   le->commit.renamed_dirino = in->ino();
 
-  mdcache->project_subtree_rename(in, straydn->get_dir(), dn->get_dir());
 
   submit_mdlog_entry(le,
                      new C_MDS_LoggedRmdirRollback(this, mdr,rollback.reqid,
@@ -9097,8 +9090,7 @@ void Server::_rmdir_rollback_finish(const MDRequestRef& mdr, metareqid_t reqid, 
   straydn->pop_projected_linkage();
 
   CInode *in = dn->get_linkage()->get_inode();
-  mdcache->adjust_subtree_after_rename(in, straydn->get_dir(),
-				       !mdr || mdr->more()->peer_update_journaled);
+  mdcache->adjust_subtree_after_rename(in, straydn->get_dir());
 
   if (mds->is_resolve()) {
     CDir *root = mdcache->get_subtree_root(straydn->get_dir());
@@ -10173,14 +10165,6 @@ void Server::_rename_prepare(const MDRequestRef& mdr,
     ceph_assert(oldin->first <= straydn->first);
     oldin->first = straydn->first;
   }
-
-  if (oldin && oldin->is_dir()) {
-    ceph_assert(straydn);
-    mdcache->project_subtree_rename(oldin, destdn->get_dir(), straydn->get_dir());
-  }
-  if (srci->is_dir())
-    mdcache->project_subtree_rename(srci, srcdn->get_dir(), destdn->get_dir());
-
 }
 
 
@@ -10365,10 +10349,10 @@ void Server::_rename_apply(const MDRequestRef& mdr, CDentry *srcdn, CDentry *des
 
   // update subtree map?
   if (destdnl->is_primary() && in->is_dir())
-    mdcache->adjust_subtree_after_rename(in, srcdn->get_dir(), true);
+    mdcache->adjust_subtree_after_rename(in, srcdn->get_dir());
 
   if (straydn && oldin->is_dir())
-    mdcache->adjust_subtree_after_rename(oldin, destdn->get_dir(), true);
+    mdcache->adjust_subtree_after_rename(oldin, destdn->get_dir());
 
   if (new_oldin_snaprealm)
     mdcache->do_realm_invalidate_and_update_notify(oldin, CEPH_SNAP_OP_SPLIT, false);
@@ -11183,16 +11167,6 @@ void Server::do_rename_rollback(bufferlist &rbl, mds_rank_t leader, const MDRequ
     dout(10) << " noting rename target ino " << target->ino() << " in metablob" << dendl;
     le->commit.renamed_dirino = target->ino();
   }
-  
-  if (target && target->is_dir()) {
-    ceph_assert(destdn);
-    mdcache->project_subtree_rename(target, straydir, destdir);
-  }
-
-  if (in && in->is_dir()) {
-    ceph_assert(srcdn);
-    mdcache->project_subtree_rename(in, destdir, srcdir);
-  }
 
   if (mdr && !mdr->more()->peer_update_journaled) {
     ceph_assert(le->commit.empty());
@@ -11240,7 +11214,7 @@ void Server::_rename_rollback_finish(MutationRef& mut, const MDRequestRef& mdr, 
     CInode *in = srcdn->get_linkage()->get_inode();
     if (in && in->is_dir()) {
       ceph_assert(destdn);
-      mdcache->adjust_subtree_after_rename(in, destdn->get_dir(), true);
+      mdcache->adjust_subtree_after_rename(in, destdn->get_dir());
     }
   }
 
@@ -11249,7 +11223,7 @@ void Server::_rename_rollback_finish(MutationRef& mut, const MDRequestRef& mdr, 
     // update subtree map?
     if (oldin && oldin->is_dir()) {
       ceph_assert(straydn);
-      mdcache->adjust_subtree_after_rename(oldin, straydn->get_dir(), true);
+      mdcache->adjust_subtree_after_rename(oldin, straydn->get_dir());
     }
   }
 

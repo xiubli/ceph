@@ -1539,7 +1539,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegmentRef const& logseg, int type, MDPe
 	}
       }
 
-      mds->mdcache->adjust_subtree_after_rename(renamed_diri, olddir, false);
+      mds->mdcache->adjust_subtree_after_rename(renamed_diri, olddir);
       
       // see if we can discard the subtree we renamed out of
       CDir *root = mds->mdcache->get_subtree_root(olddir);
@@ -1577,7 +1577,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegmentRef const& logseg, int type, MDPe
       if (!linked.count(p->first))
 	continue;
       ceph_assert(p->first->is_dir());
-      mds->mdcache->adjust_subtree_after_rename(p->first, p->second, false);
+      mds->mdcache->adjust_subtree_after_rename(p->first, p->second);
 
       if (!(++count % mds->heartbeat_reset_grace()))
         mds->heartbeat_reset();
@@ -2838,79 +2838,10 @@ void ESubtreeMap::replay(MDSRank *mds)
   // suck up the subtree map?
   if (mds->mdcache->is_subtrees()) {
     dout(10) << "ESubtreeMap.replay -- i already have import map; verifying" << dendl;
-    int errors = 0;
 
-    for (map<dirfrag_t, vector<dirfrag_t> >::iterator p = subtrees.begin();
-	 p != subtrees.end();
-	 ++p) {
-      CDir *dir = mds->mdcache->get_dirfrag(p->first);
-      if (!dir) {
-	mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			  << " subtree root " << p->first << " not in cache";
-	++errors;
-	continue;
-      }
-      
-      if (!mds->mdcache->is_subtree(dir)) {
-	mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			  << " subtree root " << p->first << " not a subtree in cache";
-	++errors;
-	continue;
-      }
-      if (dir->get_dir_auth().first != mds->get_nodeid()) {
-	mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			  << " subtree root " << p->first
-			  << " is not mine in cache (it's " << dir->get_dir_auth() << ")";
-	++errors;
-	continue;
-      }
-
-      for (vector<dirfrag_t>::iterator q = p->second.begin(); q != p->second.end(); ++q)
-	mds->mdcache->get_force_dirfrag(*q, true);
-
-      set<CDir*> bounds;
-      mds->mdcache->get_subtree_bounds(dir, bounds);
-      for (vector<dirfrag_t>::iterator q = p->second.begin(); q != p->second.end(); ++q) {
-	CDir *b = mds->mdcache->get_dirfrag(*q);
-	if (!b) {
-	  mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			    << " subtree " << p->first << " bound " << *q << " not in cache";
-	++errors;
-	  continue;
-	}
-	if (bounds.count(b) == 0) {
-	  mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			    << " subtree " << p->first << " bound " << *q << " not a bound in cache";
-	++errors;
-	  continue;
-	}
-	bounds.erase(b);
-      }
-      for (set<CDir*>::iterator q = bounds.begin(); q != bounds.end(); ++q) {
-	mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			  << " subtree " << p->first << " has extra bound in cache " << (*q)->dirfrag();
-	++errors;
-      }
-    }
-    
-    std::vector<CDir*> dirs;
-    mds->mdcache->get_subtrees(dirs);
-    for (const auto& dir : dirs) {
-      if (dir->get_dir_auth().first != mds->get_nodeid())
-	continue;
-      if (subtrees.count(dir->dirfrag()) == 0) {
-	mds->clog->error() << " replayed ESubtreeMap at " << get_start_off()
-			  << " does not include cache subtree " << dir->dirfrag();
-	++errors;
-      }
-    }
-
-    errors += mds->mdcache->migrator->replay_check_ambiguous_subtrees(this);
-
-    if (errors) {
-      dout(0) << "journal subtrees: " << subtrees << dendl;
+    if (mds->mdcache->migrator->replay_check_ambiguous_subtrees(this)) {
       mds->mdcache->show_subtrees();
-      ceph_assert(!mds->mdlog->get_debug_subtrees() || errors == 0);
+      ceph_assert(!mds->mdlog->get_debug_subtrees());
     }
     return;
   }
@@ -2921,14 +2852,12 @@ void ESubtreeMap::replay(MDSRank *mds)
   //metablob.print(*_dout);
   metablob.replay(mds, get_segment(), EVENT_SUBTREEMAP);
   
-  // restore import/export maps
-  for (map<dirfrag_t, vector<dirfrag_t> >::iterator p = subtrees.begin();
-       p != subtrees.end();
-       ++p) {
-    CDir *dir = mds->mdcache->get_dirfrag(p->first);
+  // restore root/mydir subtree
+  for (auto &p : subtrees) {
+    CDir *dir = mds->mdcache->get_dirfrag(p.first);
     ceph_assert(dir);
     // not ambiguous
-    mds->mdcache->adjust_bounded_subtree_auth(dir, p->second, mds->get_nodeid());
+    mds->mdcache->adjust_bounded_subtree_auth(dir, p.second, mds->get_nodeid());
   }
 
   for (auto &p : ambiguous_subtrees) {
@@ -2936,11 +2865,8 @@ void ESubtreeMap::replay(MDSRank *mds)
 						p.second.from, p.second.tid);
   }
 
-  mds->mdcache->recalc_auth_bits(true);
-
   mds->mdcache->show_subtrees();
 }
-
 
 
 // -----------------------
