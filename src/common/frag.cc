@@ -228,21 +228,6 @@ std::ostream& operator<<(std::ostream& out, const fragtree_t& ft)
   return out << ")";
 }
 
-void fragset_t::simplify() {
-  auto it = _set.begin();
-  while (it != _set.end()) {
-    if (!it->is_root() &&
-	_set.count(it->get_sibling())) {
-	  _set.erase(it->get_sibling());
-	  auto ret = _set.insert(it->parent());
-	  _set.erase(it);
-	  it = ret.first;
-	} else {
-	  ++it;
-	}
-  }
-}
-
 void fragset_t::encode(ceph::buffer::list& bl) const {
   ceph::encode(_set, bl);
 }
