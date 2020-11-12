@@ -2204,13 +2204,13 @@ void MDSRank::boot_create()
   auto le = new ELid();
   mdlog->submit_entry(le);
 
+  dout(3) << "boot_create creating mydir hierarchy" << dendl;
+  mdcache->create_mydir_hierarchy(fin.get());
+
   if (whoami == mdsmap->get_root()) {
     dout(3) << "boot_create creating fresh hierarchy" << dendl;
     mdcache->create_empty_hierarchy(fin.get());
   }
-
-  dout(3) << "boot_create creating mydir hierarchy" << dendl;
-  mdcache->create_mydir_hierarchy(fin.get());
 
   dout(3) << "boot_create creating global snaprealm" << dendl;
   mdcache->create_global_snaprealm();

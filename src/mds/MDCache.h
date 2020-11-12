@@ -1291,8 +1291,9 @@ private:
   }
 
   void touch_inode(CInode *in) {
-    if (in->get_parent_dn())
-      touch_dentry(in->get_projected_parent_dn());
+    CDentry *pdn = in->get_projected_parent_dn();
+    if (pdn)
+      touch_dentry(pdn);
   }
 
   void inode_remove_replica(CInode *in, mds_rank_t rep, bool rejoin,

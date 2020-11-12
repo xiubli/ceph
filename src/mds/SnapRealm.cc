@@ -83,7 +83,7 @@ SnapRealm::SnapRealm(MDCache *c, CInode *in) :
  * get list of snaps for this realm.  we must include parents' snaps
  * for the intervals during which they were our parent.
  */
-void SnapRealm::build_snap_set() const
+void SnapRealm::build_snap_set()
 {
   dout(10) << "build_snap_set on " << *this << dendl;
 
@@ -118,8 +118,13 @@ void SnapRealm::build_snap_set() const
   }
 }
 
-void SnapRealm::check_cache() const
+void SnapRealm::check_cache()
 {
+  if (!parent && !inode->is_base()) {
+    ceph_assert(mdcache->is_subtrees_connected());
+    adjust_parent();
+  }
+
   snapid_t seq;
   snapid_t last_created;
   snapid_t last_destroyed = mdcache->mds->snapclient->get_last_destroyed();
@@ -167,7 +172,7 @@ void SnapRealm::check_cache() const
 	   << ")" << dendl;
 }
 
-const set<snapid_t>& SnapRealm::get_snaps() const
+const set<snapid_t>& SnapRealm::get_snaps()
 {
   check_cache();
   dout(10) << "get_snaps " << cached_snaps
@@ -179,7 +184,7 @@ const set<snapid_t>& SnapRealm::get_snaps() const
 /*
  * build vector in reverse sorted order
  */
-const SnapContext& SnapRealm::get_snap_context() const
+const SnapContext& SnapRealm::get_snap_context()
 {
   check_cache();
 
@@ -316,6 +321,9 @@ bool SnapRealm::will_md_op_succeed(const snapid_t snap_id, const string& md_key,
 
 void SnapRealm::adjust_parent()
 {
+  if (!mdcache->is_subtrees_connected())
+    return;
+
   SnapRealm *newparent;
   if (srnode.is_parent_global()) {
     newparent = mdcache->get_global_snaprealm();
@@ -337,9 +345,11 @@ void SnapRealm::adjust_parent()
 
 void SnapRealm::split_at(SnapRealm *child)
 {
+  if (!mdcache->is_subtrees_connected())
+    return;
+
   dout(10) << __func__ << ": " << *child
 	   << " on " << *child->inode << dendl;
-
   if (inode->is_mdsdir() || !child->inode->is_dir()) {
     // it's not a dir.
     if (child->inode->containing_realm) {
@@ -412,42 +422,47 @@ void SnapRealm::split_at(SnapRealm *child)
 
 void SnapRealm::merge_to(SnapRealm *newparent)
 {
-  if (!newparent)
-    newparent = parent;
-  dout(10) << "merge to " << *newparent << " on " << *newparent->inode << dendl;
+  if (mdcache->is_subtrees_connected()) {
+    if (!newparent)
+      newparent = parent;
+    dout(10) << "merge to " << *newparent << " on " << *newparent->inode << dendl;
 
-  dout(10) << " open_children are " << open_children << dendl;
-  for (auto realm : open_children) {
-    dout(20) << " child realm " << *realm << " on " << *realm->inode << dendl;
-    newparent->open_children.insert(realm);
-    realm->parent = newparent;
-  }
-  open_children.clear();
+    dout(10) << " open_children are " << open_children << dendl;
+    for (auto realm : open_children) {
+      dout(20) << " child realm " << *realm << " on " << *realm->inode << dendl;
+      newparent->open_children.insert(realm);
+      realm->parent = newparent;
+    }
+    open_children.clear();
 
-  for (auto p = inodes_with_caps.begin(); !p.end(); ) {
-    CInode *in = *p;
-    ++p;
-    in->move_to_realm(newparent);
+    for (auto p = inodes_with_caps.begin(); !p.end(); ) {
+      CInode *in = *p;
+      ++p;
+      in->move_to_realm(newparent);
+    }
+    ceph_assert(inodes_with_caps.empty());
+  } else {
+    ceph_assert(open_children.empty());
+    ceph_assert(inodes_with_caps.empty());
   }
-  ceph_assert(inodes_with_caps.empty());
 
   // delete this
   inode->close_snaprealm();
 }
 
-const bufferlist& SnapRealm::get_snap_trace() const
+const bufferlist& SnapRealm::get_snap_trace()
 {
   check_cache();
   return cached_snap_trace;
 }
 
-const bufferlist& SnapRealm::get_snap_trace_new() const
+const bufferlist& SnapRealm::get_snap_trace_new()
 {
   check_cache();
   return cached_snap_trace_new;
 }
 
-void SnapRealm::build_snap_trace() const
+void SnapRealm::build_snap_trace()
 {
   cached_snap_trace.clear();
   cached_snap_trace_new.clear();
