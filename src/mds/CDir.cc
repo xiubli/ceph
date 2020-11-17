@@ -1576,6 +1576,7 @@ void CDir::fetch(std::string_view dname, snapid_t last,
       auto _fnode = allocate_fnode();
       _fnode->version = 1;
       set_fresh_fnode(std::move(_fnode));
+      update_projected_version();
     }
     mark_complete();
 
