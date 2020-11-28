@@ -154,7 +154,7 @@ using namespace std::literals::chrono_literals;
 
 class MDCache {
  public:
-  typedef std::map<mds_rank_t, ref_t<MCacheExpire>> expiremap;
+  typedef std::map<mds_rank_t, ref_t<MCacheExpire>> expiremap_t;
 
   using clock = ceph::coarse_mono_clock;
   using time = ceph::coarse_mono_time;
@@ -346,6 +346,7 @@ class MDCache {
       c.push_back(p.first);
     }
   }
+  void adjust_subtree_pin(CDir *dir, mds_authority_t parent_auth);
   void adjust_subtree_auth(CDir *root, mds_authority_t auth, bool adjust_pop=true);
   void adjust_subtree_auth(CDir *root, mds_rank_t a, mds_rank_t b=CDIR_AUTH_UNKNOWN) {
     adjust_subtree_auth(root, mds_authority_t(a,b));
@@ -812,7 +813,7 @@ private:
    * @return false if we completed cleanly, true if caller should stop
    *         expiring because we hit something with refs.
    */
-  bool expire_recursive(CInode *in, expiremap& expiremap);
+  bool expire_recursive(CInode *in, expiremap_t& expiremap);
 
   void trim_client_leases();
   void check_memory_usage();
@@ -1185,7 +1186,7 @@ private:
   ceph_tid_t find_ino_peer_last_tid = 0;
 
   // delayed cache expire
-  std::map<CDir*, expiremap> delayed_expire; // subtree root -> expire msg
+  std::map<CDir*, expiremap_t> delayed_expire; // subtree root -> expire msg
 
   /* Because exports may fail, this set lets us keep track of inodes that need exporting. */
   std::set<CInode *> export_pin_queue;
@@ -1520,11 +1521,11 @@ private:
 
   void identify_files_to_recover();
 
-  std::pair<bool, uint64_t> trim_lru(uint64_t count, expiremap& expiremap);
-  bool trim_dentry(CDentry *dn, expiremap& expiremap);
-  void trim_dirfrag(CDir *dir, CDir *con, expiremap& expiremap);
-  bool trim_inode(CDentry *dn, CInode *in, CDir *con, expiremap&);
-  void send_expire_messages(expiremap& expiremap);
+  std::pair<bool, uint64_t> trim_lru(uint64_t count, expiremap_t& expiremap);
+  bool trim_dentry(CDentry *dn, expiremap_t& expiremap);
+  void trim_dirfrag(CDir *dir, CDir *con, expiremap_t& expiremap);
+  bool trim_inode(CDentry *dn, CInode *in, CDir *con, expiremap_t& expiremap);
+  void send_expire_messages(expiremap_t& expiremap);
   void trim_non_auth();      // trim out trimmable non-auth items
 
   void adjust_dir_fragments(CInode *diri, frag_t basefrag, int bits,

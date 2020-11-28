@@ -3490,13 +3490,6 @@ void Migrator::import_finish(CDir *dir, import_state_t& stat, bool last)
     p.first->put(CInode::PIN_IMPORTINGCAPS);
   }
   stat.peer_exports.clear();
-
-  // is it empty?
-  if (dir->get_num_head_items() == 0 &&
-      !dir->inode->is_auth()) {
-    // reexport!
-    export_empty_import(dir);
-  }
 }
 
 void Migrator::dump_export_states(Formatter *f)
