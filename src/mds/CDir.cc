@@ -1921,7 +1921,7 @@ CDentry *CDir::_load_dentry(
 
       if (dnl->is_primary()) {
 	CInode *in = dnl->get_inode();
-	if (in->state_test(CInode::STATE_REJOINUNDEF)) {
+	if (in->is_rejoin_undef()) {
 	  undef_inode = true;
 	} else if (committed_version == 0 &&
 		   dn->is_dirty() &&
@@ -2195,7 +2195,7 @@ void CDir::_omap_fetched(bufferlist& hdrbl, map<string, bufferlist>& omap,
     }
 
     CDentry::linkage_t *dnl = dn->get_linkage();
-    if (dnl->is_primary() && dnl->get_inode()->state_test(CInode::STATE_REJOINUNDEF))
+    if (dnl->is_primary() && dnl->get_inode()->is_rejoin_undef())
       undef_inodes.push_back(dnl->get_inode());
   }
 

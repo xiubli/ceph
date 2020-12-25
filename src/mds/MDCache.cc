@@ -4323,7 +4323,7 @@ CDir *MDCache::rejoin_invent_dirfrag(dirfrag_t df)
   if (!in)
     in = rejoin_invent_inode(df.ino, CEPH_NOSNAP);
   if (!in->is_dir()) {
-    ceph_assert(in->state_test(CInode::STATE_REJOINUNDEF));
+    ceph_assert(in->is_rejoin_undef());
     in->_get_inode()->mode = S_IFDIR;
     in->_get_inode()->dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
   }
@@ -4377,7 +4377,7 @@ void MDCache::handle_cache_rejoin_strong(const cref_t<MMDSCacheRejoin> &strong)
     if (dir) {
       dout(10) << " have " << *dir << dendl;
     } else {
-      if (diri->state_test(CInode::STATE_REJOINUNDEF))
+      if (diri->is_rejoin_undef())
 	dir = rejoin_invent_dirfrag(dirfrag_t(diri->ino(), frag_t()));
       else if (diri->dirfragtree.is_leaf(dirfrag.frag))
 	dir = rejoin_invent_dirfrag(dirfrag);
@@ -5604,9 +5604,9 @@ bool MDCache::open_undef_inodes_dirfrags()
   for (auto& p : fetch_queue) {
     CDir *dir = p.first;
     CInode *diri = dir->get_inode();
-    if (diri->state_test(CInode::STATE_REJOINUNDEF))
+    if (diri->is_rejoin_undef())
       continue;
-    if (dir->state_test(CDir::STATE_REJOINUNDEF))
+    if (dir->is_rejoin_undef())
       ceph_assert(diri->dirfragtree.is_leaf(dir->get_frag()));
     if (p.second.first || p.second.second.empty()) {
       dir->fetch(gather.new_sub());
@@ -8625,7 +8625,7 @@ void MDCache::_open_ino_traverse_dir(inodeno_t ino, open_ino_info_t& info, int r
 void MDCache::_open_ino_fetch_dir(inodeno_t ino, const cref_t<MMDSOpenIno> &m, bool parent,
 				  CDir *dir, std::string_view dname)
 {
-  if (dir->state_test(CDir::STATE_REJOINUNDEF))
+  if (dir->is_rejoin_undef())
     ceph_assert(dir->get_inode()->dirfragtree.is_leaf(dir->get_frag()));
 
   auto fin = new C_MDC_OpenInoTraverseDir(this, ino, m, parent);
@@ -8659,11 +8659,11 @@ int MDCache::open_ino_traverse_dir(inodeno_t ino, const cref_t<MMDSOpenIno> &m,
       continue;
     }
 
-    if (diri->state_test(CInode::STATE_REJOINUNDEF)) {
+    if (diri->is_rejoin_undef()) {
       CDentry *dn = diri->get_parent_dn();
       CDir *dir = dn->get_dir();
-      while (dir->state_test(CDir::STATE_REJOINUNDEF) &&
-	     dir->get_inode()->state_test(CInode::STATE_REJOINUNDEF)) {
+      while (dir->is_rejoin_undef() &&
+	     dir->get_inode()->is_rejoin_undef()) {
 	dn = dir->get_inode()->get_parent_dn();
 	dir = dn->get_dir();
       }
@@ -8700,7 +8700,7 @@ int MDCache::open_ino_traverse_dir(inodeno_t ino, const cref_t<MMDSOpenIno> &m,
       CDentry::linkage_t *dnl = dn ? dn->get_linkage() : NULL;
       if (dir->is_auth()) {
 	if (dnl && dnl->is_primary() &&
-	    dnl->get_inode()->state_test(CInode::STATE_REJOINUNDEF)) {
+	    dnl->get_inode()->is_rejoin_undef()) {
 	  dout(10) << " fetching undef " << *dnl->get_inode() << dendl;
 	  _open_ino_fetch_dir(ino, m, i == 0, dir, name);
 	  return 1;
