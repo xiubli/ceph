@@ -56,7 +56,7 @@ class CDentry;
 class CDir;
 class CInode;
 class MDCache;
-class MDSContext;
+#include "MDSContext.h"
 class LogSegment;
 struct SnapRealm;
 class Session;
@@ -982,6 +982,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   void unfreeze_inode();
 
   void freeze_auth_pin();
+  void unfreeze_auth_pin(MDSContext::vec& finished);
   void unfreeze_auth_pin();
 
   // -- reference counting --
