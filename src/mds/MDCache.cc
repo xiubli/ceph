@@ -1027,7 +1027,8 @@ MDSCacheObject *MDCache::get_object(const MDSCacheObjectInfo &info)
 */
 mds_rank_t MDCache::hash_into_rank_bucket(inodeno_t ino, frag_t fg)
 {
-  const mds_rank_t max_mds = mds->mdsmap->get_max_mds();
+  const mds_rank_t max_mds = std::min<int>(mds->mdsmap->get_max_mds(),
+					   mds->mdsmap->get_num_in_mds());
   if (max_mds == 0)
     return MDS_RANK_NONE;
   uint64_t hash = rjhash64(ino);
