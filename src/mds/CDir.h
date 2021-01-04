@@ -188,8 +188,8 @@ public:
   // -- wait masks --
   static const uint64_t WAIT_DENTRY       = (1<<0);  // wait for item to be in cache
   static const uint64_t WAIT_COMPLETE     = (1<<1);  // wait for complete dir contents
-  static const uint64_t WAIT_FROZEN       = (1<<2);  // auth pins removed
-  static const uint64_t WAIT_CREATED	  = (1<<3);  // new dirfrag is logged
+  static const uint64_t WAIT_CREATED	  = (1<<2);  // new dirfrag is logged
+  static const uint64_t WAIT_EXPORTED	  = (1<<3);
   static const uint64_t WAIT_BITS         = 4;
 
   static const int WAIT_DNLOCK_OFFSET = 4;

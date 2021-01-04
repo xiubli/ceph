@@ -409,10 +409,9 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   // -- waiters --
   static const uint64_t WAIT_DIR         = (1<<0);
-  static const uint64_t WAIT_FROZEN      = (1<<1);
-  static const uint64_t WAIT_TRUNC       = (1<<2);
-  static const uint64_t WAIT_FLOCK       = (1<<3);
-  static const uint64_t WAIT_BITS        = 4;
+  static const uint64_t WAIT_TRUNC       = (1<<1);
+  static const uint64_t WAIT_FLOCK       = (1<<2);
+  static const uint64_t WAIT_BITS        = 3;
   
   static const uint64_t WAIT_ANY_MASK    = ((1ul << WAIT_BITS) - 1);
 

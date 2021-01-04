@@ -3361,7 +3361,7 @@ void Server::handle_peer_auth_pin(const MDRequestRef& mdr)
     if (auth_pin_freeze) {
       dout(10) << " freezing auth pin on " << *auth_pin_freeze << dendl;
       if (!mdr->freeze_auth_pin(auth_pin_freeze)) {
-	auth_pin_freeze->add_waiter(CInode::WAIT_FROZEN, new C_MDS_RetryRequest(mdcache, mdr));
+	auth_pin_freeze->add_waiter(MDSCacheObject::WAIT_FROZEN, new C_MDS_RetryRequest(mdcache, mdr));
 	mds->mdlog->flush();
 	goto blocked;
       }
@@ -7327,8 +7327,9 @@ public:
     newi->mark_dirty_parent(mdr->ls, true);
 
     // mkdir?
+    CDir *dir = nullptr;
     if (newi->is_dir()) {
-      CDir *dir = newi->get_dirfrag(frag_t());
+      dir = newi->get_dirfrag(frag_t());
       ceph_assert(dir);
       dir->mark_dirty(mdr->ls);
       dir->mark_new(mdr->ls);
@@ -7336,10 +7337,14 @@ public:
 
     mdr->apply();
 
-    MDRequestRef null_ref;
-    get_mds()->mdcache->send_dentry_link(dn, null_ref);
+    MDCache *mdcache = get_mds()->mdcache;
 
-    if (newi->is_file()) {
+    MDRequestRef null_ref;
+    mdcache->send_dentry_link(dn, null_ref);
+
+    if (dir) {
+      mdcache->export_dir_distributed(dir, nullptr);
+    } else if (newi->is_file()) {
       get_mds()->locker->share_inode_max_size(newi);
     } else if (newi->is_dir()) {
       // We do this now so that the linkages on the new directory are stable.
@@ -7552,6 +7557,7 @@ void Server::handle_client_mkdir(const MDRequestRef& mdr)
   // make sure this inode gets into the journal
   le->metablob.add_opened_ino(newi->ino());
 
+  mdr->no_early_reply = true;
   journal_and_reply(mdr, newi, dn, le, new C_MDS_mknod_finish(this, mdr, dn, newi));
 
   // We hit_dir (via hit_inode) in our finish callback, but by then we might
@@ -10188,7 +10194,7 @@ void Server::handle_peer_rename_prep(const MDRequestRef& mdr)
       int allowance = 3; // 1 for the mdr auth_pin, 1 for the link lock, 1 for the snap lock
       dout(10) << " freezing srci " << *srcdnl->get_inode() << " with allowance " << allowance << dendl;
       if (!srcdnl->get_inode()->freeze_inode(allowance)) {
-	srcdnl->get_inode()->add_waiter(CInode::WAIT_FROZEN, new C_MDS_RetryRequest(mdcache, mdr));
+	srcdnl->get_inode()->add_waiter(MDSCacheObject::WAIT_FROZEN, new C_MDS_RetryRequest(mdcache, mdr));
 	return;
       }
 

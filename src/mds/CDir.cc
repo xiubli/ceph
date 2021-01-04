@@ -1591,6 +1591,15 @@ void CDir::fetch(std::string_view dname, snapid_t last,
     return;
   }
 
+  if (!ignore_authpinnability &&
+      !state_test(CDir::STATE_FETCHING) &&
+      get_num_any() == 0 &&
+      mdcache->mds->is_active() &&
+      mdcache->export_dir_distributed(this, c)) {
+    dout(7) << "distributing empty dirfrag, waiting" << dendl;
+    return;
+  }
+
   // FIXME: to fetch a snap dentry, we need to get omap key in range
   //       [(name, last), (name, CEPH_NOSNAP))
   if (!dname.empty() && last == CEPH_NOSNAP && !g_conf().get_val<bool>("mds_dir_prefetch")) {
