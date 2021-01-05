@@ -1083,7 +1083,6 @@ private:
   void merge_dir(CInode *diri, frag_t fg);
 
   void find_stale_fragment_freeze();
-  void fragment_freeze_inc_num_waiters(CDir *dir);
   bool fragment_are_all_frozen(CDir *dir);
   int get_num_fragmenting_dirs() { return fragments.size(); }
 
@@ -1478,7 +1477,6 @@ private:
     bool all_frozen = false;
     utime_t last_cum_auth_pins_change;
     int last_cum_auth_pins = 0;
-    int num_remote_waiters = 0;	// number of remote authpin waiters
   };
 
   enum KILL_SHUTDOWN_AT {

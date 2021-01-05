@@ -136,7 +136,6 @@ struct Migrator::export_state_t {
   // for freeze tree deadlock detection
   utime_t last_cum_auth_pins_change;
   int last_cum_auth_pins = 0;
-  int num_remote_waiters = 0; // number of remote authpin waiters
   std::shared_ptr<export_base_t> parent;
   bool active_peer = true;
 };
@@ -325,10 +324,7 @@ void Migrator::find_stale_export_freeze()
     }
     if (stat.last_cum_auth_pins_change >= cutoff)
       continue;
-    if (stat.num_remote_waiters > 0 ||
-	(!dir->inode->is_root() && dir->get_parent_dir()->is_freezing())) {
-      export_try_cancel(dir);
-    }
+    export_try_cancel(dir);
   }
 }
 
@@ -769,12 +765,6 @@ bool Migrator::export_has_notified(CDir *dir, mds_rank_t who) const {
   ceph_assert(it != export_state.end());
   ceph_assert(it->second.state == EXPORT_NOTIFYING);
   return (it->second.notify_ack_waiting.count(who) == 0);
-}
-
-void Migrator::export_freeze_inc_num_waiters(CDir *dir) {
-  auto it = export_state.find(dir->dirfrag());
-  ceph_assert(it != export_state.end());
-  it->second.num_remote_waiters++;
 }
 
 void Migrator::audit()
@@ -3524,7 +3514,6 @@ void Migrator::dump_export_states(Formatter *f)
     case EXPORT_FREEZING:
       f->dump_stream("last_cum_auth_pins_change") << state.last_cum_auth_pins_change;
       f->dump_int("last_cum_auth_pins", state.last_cum_auth_pins);
-      f->dump_int("num_remote_waiters", state.num_remote_waiters);
 
       break;
 

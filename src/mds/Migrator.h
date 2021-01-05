@@ -156,7 +156,6 @@ public:
 
   bool export_has_notified(CDir *dir, mds_rank_t who) const;
 
-  void export_freeze_inc_num_waiters(CDir *dir);
   void find_stale_export_freeze();
 
   // -- misc --

@@ -12061,19 +12061,6 @@ bool MDCache::fragment_are_all_frozen(CDir *dir)
   return false;
 }
 
-void MDCache::fragment_freeze_inc_num_waiters(CDir *dir)
-{
-  for (auto p = fragments.lower_bound(dirfrag_t(dir->ino(), 0));
-       p != fragments.end() && p->first.ino == dir->ino();
-       ++p) {
-    if (p->first.frag.contains(dir->get_frag())) {
-      p->second.num_remote_waiters++;
-      return;
-    }
-  }
-  ceph_abort();
-}
-
 void MDCache::find_stale_fragment_freeze()
 {
   dout(10) << "find_stale_fragment_freeze" << dendl;
@@ -12110,15 +12097,11 @@ void MDCache::find_stale_fragment_freeze()
     }
     if (info.last_cum_auth_pins_change >= cutoff)
       continue;
-    dir = info.dirs.front();
-    if (info.num_remote_waiters > 0 ||
-	(!dir->inode->is_root() && dir->get_parent_dir()->is_freezing())) {
-      dout(10) << " cancel fragmenting " << df << " bit " << info.bits << dendl;
-      std::vector<CDir*> dirs;
-      info.dirs.swap(dirs);
-      fragments.erase(df);
-      fragment_unmark_unfreeze_dirs(dirs);
-    }
+    dout(10) << " cancel fragmenting " << df << " bit " << info.bits << dendl;
+    std::vector<CDir*> dirs;
+    info.dirs.swap(dirs);
+    fragments.erase(df);
+    fragment_unmark_unfreeze_dirs(dirs);
   }
 }
 
@@ -13546,8 +13529,6 @@ void MDCache::repair_dirfrag_stats_work(const MDRequestRef& mdr)
 
     mds->locker->drop_locks(mdr.get());
     mdr->drop_local_auth_pins();
-    if (mdr->is_any_remote_auth_pin())
-      mds->locker->notify_freeze_waiter(dir);
     return;
   }
 
