@@ -324,6 +324,8 @@ void Migrator::find_stale_export_freeze()
     }
     if (stat.last_cum_auth_pins_change >= cutoff)
       continue;
+    if (mds->logger)
+      mds->logger->inc(l_mds_export_freeze_fail);
     export_try_cancel(dir);
   }
 }
@@ -477,6 +479,10 @@ void Migrator::export_cancel_finish(export_state_iterator& it)
     // pinned by Migrator::export_notify_abort()
     dir->auth_unpin(this);
   }
+
+  if (mds->logger)
+    mds->logger->inc(l_mds_export_fail);
+
   // send pending subtree resolves?  (these need to go out when all exports have finished.)
   if (!is_any_in_progress())
     mdcache->maybe_send_pending_resolves();
@@ -531,6 +537,8 @@ void Migrator::handle_mds_failure_or_stop(mds_rank_t who)
       // the guy i'm exporting to failed, or we're just freezing.
       dout(10) << "cleaning up export state (" << stat.state << ")"
 	       << get_export_statename(stat.state) << " of " << *dir << dendl;
+      if (mds->logger)
+	mds->logger->inc(l_mds_export_peer_fail);
       export_try_cancel(dir);
     } else if (stat.peer != who) {
       // bystander failed.
@@ -581,6 +589,9 @@ void Migrator::handle_mds_failure_or_stop(mds_rank_t who)
       else
 	dout(10) << "cleaning up import state (" << q->second.state << ")"
 		 << get_import_statename(q->second.state) << " of " << df << dendl;
+
+      if (mds->logger && q->second.state <= IMPORT_LOGGINGSTART)
+	mds->logger->inc(l_mds_import_peer_fail);
 
       switch (q->second.state) {
       case IMPORT_DISCOVERING:
@@ -1187,6 +1198,8 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
 
   if (mdr->more()->peer_error || dir->is_frozen() || dir->is_freezing()) {
     dout(7) << "wouldblock|freezing|frozen, canceling export" << dendl;
+    if (mds->logger)
+      mds->logger->inc(l_mds_export_authpin_fail);
     export_try_cancel(dir);
     return;
   }
@@ -1245,8 +1258,11 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     lov.add_rdlock(&dir->get_inode()->dirfragtreelock);
 
     if (!mds->locker->acquire_locks(mdr, lov, nullptr, {}, true)) {
-      if (mdr->aborted)
+      if (mdr->aborted) {
+	if (mds->logger)
+	  mds->logger->inc(l_mds_export_authpin_fail);
 	export_try_cancel(dir);
+      }
       return;
     }
 
@@ -1407,6 +1423,8 @@ void Migrator::handle_export_discover_ack(const cref_t<MExportDirDiscoverAck> &m
 
     } else {
       dout(7) << "peer failed to discover (not active or quiesced), canceling" << dendl;
+      if (mds->logger)
+	mds->logger->inc(l_mds_export_discover_fail);
       export_try_cancel(dir, false);
     }
   }
@@ -1518,6 +1536,8 @@ void Migrator::export_frozen(dirfrag_t df, uint64_t tid)
       !export_try_grab_locks(dir, stat.mut)) {
     dout(7) << "export_dir couldn't acquire all needed locks, failing. "
 	    << *dir << dendl;
+    if (mds->logger)
+      mds->logger->inc(l_mds_export_trylock_fail);
     export_try_cancel(dir);
     return;
   }
@@ -1655,6 +1675,8 @@ void Migrator::handle_export_prep_ack(const cref_t<MExportDirPrepAck> &m)
 
   if (!m->is_success()) {
     dout(7) << "peer couldn't acquire all needed locks or wasn't active, canceling" << dendl;
+    if (mds->logger)
+      mds->logger->inc(l_mds_export_prep_fail);
     export_try_cancel(dir, false);
     return;
   }
@@ -1832,8 +1854,10 @@ void Migrator::export_go_synced(dirfrag_t df, uint64_t tid)
   mds->hit_export_target(stat.peer, num_exported_inodes+1);
 
   // stats
-  if (mds->logger) mds->logger->inc(l_mds_exported);
-  if (mds->logger) mds->logger->inc(l_mds_exported_inodes, num_exported_inodes);
+  if (mds->logger) {
+    mds->logger->inc(l_mds_exported);
+    mds->logger->inc(l_mds_exported_inodes, num_exported_inodes);
+  }
 
   mdcache->show_subtrees();
 }
@@ -2666,6 +2690,9 @@ void Migrator::handle_export_cancel(const cref_t<MExportDirCancel> &m)
     ceph_abort_msg("got export_cancel in weird state");
   }
 
+  if (mds->logger)
+    mds->logger->inc(l_mds_import_peer_cancel);
+
   if (!is_any_in_progress())
     mdcache->maybe_send_pending_resolves();
 }
@@ -2881,6 +2908,8 @@ void Migrator::handle_export_prep(const cref_t<MExportDirPrep> &m, bool did_assi
       it->second.state = IMPORT_PREPPED;
     } else {
       dout(7) << " couldn't acquire all needed locks, failing. " << *dir << dendl;
+      if (mds->logger)
+	mds->logger->inc(l_mds_import_trylock_fail);
       success = false;
     }
   } else {
@@ -3312,6 +3341,9 @@ void Migrator::import_reverse_final(CDir *dir, import_state_iterator it)
   // clean up
   MutationRef mut = it->second.mut;
   import_state.erase(it);
+
+  if (mds->logger)
+    mds->logger->inc(l_mds_import_fail);
 
   // send pending subtree resolves?
   if (!is_any_in_progress())
@@ -4374,6 +4406,8 @@ void Migrator::handle_peer_resolve_ack(const cref_t<MMDSResolveAck>& ack)
       CDir *dir = mdcache->get_dirfrag(df);
       ceph_assert(dir);
       import_reverse(dir, it, false);
+      if (mds->logger)
+	mds->logger->inc(l_mds_import_resolve_fail);
     }
   }
 
