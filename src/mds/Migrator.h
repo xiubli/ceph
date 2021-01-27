@@ -177,18 +177,17 @@ public:
     ERR_EXPORT_INPROGRESS,
     ERR_FREEZING_OR_FROZEN,
   };
-  int export_dir(CDir *dir, mds_rank_t dest);
+  int export_dir(CDir *dir, mds_rank_t dest, bool recursive=true);
 
   void export_empty_import(CDir *dir);
   void export_dir_nicely(CDir *dir, mds_rank_t dest);
+  bool should_throttle() const;
   void maybe_do_queued_export();
   void clear_export_queue() {
     export_queue.clear();
     export_queue_gen++;
   }
   
-  void maybe_split_export(CDir* dir, uint64_t max_size, bool null_okay,
-			  std::vector<std::pair<CDir*, size_t> >& results);
 
   bool export_try_grab_locks(CDir *dir, MutationRef& mut);
   void get_export_client_set(CDir *dir, std::set<client_t> &client_set);
@@ -305,6 +304,8 @@ protected:
   void export_go_synced(dirfrag_t df, uint64_t tid);
   bool maybe_export_fast(export_state_t& stat);
   void logged_export_fast(CDir *dir);
+  void maybe_split_export(const export_state_t &stat, uint64_t max_size,
+			  std::vector<std::pair<CDir*, size_t> >& results);
   void export_try_cancel(CDir *dir, bool notify_peer=true);
   void export_cancel_finish(export_state_iterator& it);
   void export_reverse(export_state_t& stat);
@@ -360,7 +361,7 @@ protected:
   uint64_t total_exporting_size = 0;
   unsigned num_locking_exports = 0; // exports in locking state (approx_size == 0)
 
-  std::list<std::pair<dirfrag_t,mds_rank_t> >  export_queue;
+  std::deque<std::pair<dirfrag_t, mds_rank_t> >  export_queue;
   uint64_t export_queue_gen = 1;
 
   std::map<dirfrag_t, import_state_t>  import_state;

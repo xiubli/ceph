@@ -246,7 +246,7 @@ public:
   std::pair<CDentry*, CDentry*>
 	    rdlock_two_paths_xlock_destdn(const MDRequestRef& mdr, bool xlock_srcdn);
 
-  CDir* try_open_auth_dirfrag(CInode *diri, frag_t fg, const MDRequestRef& mdr);
+  CDir* try_get_complete_dirfrag(CInode *diri, frag_t fg, const MDRequestRef& mdr);
 
   // requests on existing inodes.
   void handle_client_getattr(const MDRequestRef& mdr, bool is_lookup);
