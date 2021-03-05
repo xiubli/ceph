@@ -79,10 +79,11 @@ using TOPNSPC::common::cmd_getval_or;
 
 class C_Flush_Journal : public MDSInternalContext {
 public:
-  C_Flush_Journal(MDCache *mdcache, MDLog *mdlog, MDSRank *mds,
+  C_Flush_Journal(MDSRank *mds, bool _force,
                   std::ostream *ss, Context *on_finish)
     : MDSInternalContext(mds),
-      mdcache(mdcache), mdlog(mdlog), ss(ss), on_finish(on_finish),
+      mdcache(mds->mdcache), mdlog(mds->mdlog),
+      force(_force), ss(ss), on_finish(on_finish),
       whoami(mds->whoami), incarnation(mds->incarnation) {
   }
 
@@ -97,9 +98,16 @@ public:
       return;
     }
 
-    if (!mds->is_active()) {
+    if (force) {
+      if (mds->get_state() < MDSMap::STATE_REJOIN ||
+          mds->get_state() > MDSMap::STATE_ACTIVE) {
+	dout(5) << __func__ << ": MDS not rejoin|clientreplay|active, no-op" << dendl;
+	complete(-EAGAIN);
+	return;
+      }
+    } else if (!mds->is_active()) {
       dout(5) << __func__ << ": MDS not active, no-op" << dendl;
-      complete(0);
+      complete(-EAGAIN);
       return;
     }
 
@@ -222,6 +230,7 @@ private:
 
   MDCache *mdcache;
   MDLog *mdlog;
+  bool force;
   SegmentBoundary::seq_t seq = 0;
   std::ostream *ss;
   Context *on_finish;
@@ -379,7 +388,7 @@ private:
         handle_flush_journal(r);
       });
 
-    C_Flush_Journal *flush_journal = new C_Flush_Journal(mdcache, mdlog, mds, &ss, ctx);
+    C_Flush_Journal *flush_journal = new C_Flush_Journal(mds, false, &ss, ctx);
     flush_journal->send();
   }
 
@@ -3007,9 +3016,11 @@ void MDSRankDispatcher::handle_asok_command(
     mdcache->flush_dentry(path, new AsyncResponse(f, std::move(on_finish)));
     return;
   } else if (command == "flush journal") {
+    string force;
+    cmd_getval(cmdmap, "force", force);
     auto respond = new AsyncResponse(f, std::move(on_finish));
-    C_Flush_Journal* flush_journal = new C_Flush_Journal(mdcache, mdlog, this, &respond->ss, respond);
-
+    C_Flush_Journal* flush_journal = new C_Flush_Journal(this, force == "--force",
+                                                         &respond->ss, respond);
     std::lock_guard locker(mds_lock);
     flush_journal->send();
     return;
