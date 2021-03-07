@@ -4161,6 +4161,7 @@ std::vector<std::string> MDSRankDispatcher::get_tracked_keys()
     "mds_bal_fragment_fast_factor",
     "mds_bal_fragment_interval",
     "mds_bal_fragment_size_max",
+    "mds_bal_hash_frag_bits",
     "mds_bal_interval",
     "mds_bal_max",
     "mds_bal_max_until",

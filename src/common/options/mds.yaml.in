@@ -748,6 +748,15 @@ options:
   - mds
   flags:
   - runtime
+- name: mds_bal_hash_frag_bits
+  type: uint
+  level: advanced
+  desc: how many bits of frag_t are used to calculate distribution of dirfrag
+  default: 3
+  services:
+  - mds
+  min: 0
+  max: 24
 # order of magnitude higher than split size
 - name: mds_bal_fragment_size_max
   type: int

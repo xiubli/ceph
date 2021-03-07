@@ -196,6 +196,7 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
 
   decayrate.set_halflife(g_conf()->mds_decay_halflife);
   bal_offload_rank0 = g_conf().get_val<bool>("mds_bal_offload_rank0");
+  bal_hash_frag_bits = g_conf().get_val<uint64_t>("mds_bal_hash_frag_bits");
 
   upkeeper = std::thread(&MDCache::upkeep_main, this);
 }
@@ -239,6 +240,8 @@ void MDCache::handle_conf_change(const std::set<std::string>& changed, const MDS
   }
   if (changed.count("mds_bal_offload_rank0"))
     bal_offload_rank0 = g_conf().get_val<bool>("mds_bal_offload_rank0");
+  if (changed.count("mds_bal_hash_frag_bits"))
+    bal_hash_frag_bits = g_conf().get_val<uint64_t>("mds_bal_hash_frag_bits");
   if (changed.count("mds_symlink_recovery")) {
     symlink_recovery = g_conf().get_val<bool>("mds_symlink_recovery");
     dout(10) << "Storing symlink targets on file object's head " << symlink_recovery << dendl;
@@ -1007,7 +1010,7 @@ mds_rank_t MDCache::hash_into_rank_bucket(inodeno_t ino, frag_t fg)
   if (max_mds == 0)
     return MDS_RANK_NONE;
   uint64_t hash = rjhash64(ino);
-  if (fg)
+  if (fg.value())
     hash = rjhash64(hash + rjhash64(fg.value()));
 
   int n = max_mds;
@@ -1026,7 +1029,8 @@ mds_rank_t MDCache::hash_into_rank_bucket(inodeno_t ino, frag_t fg)
 
 bool MDCache::export_dir_distributed(CDir *dir, MDSContext *fin)
 {
-  mds_rank_t dest = hash_into_rank_bucket(dir->ino(), dir->get_frag());
+  frag_t fg = ceph_frag_make(bal_hash_frag_bits, dir->get_frag().value());
+  mds_rank_t dest = hash_into_rank_bucket(dir->ino(), fg);
   if (dest == mds->get_nodeid())
     return false;
 
