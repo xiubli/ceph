@@ -739,6 +739,15 @@ options:
   - mds
   flags:
   - runtime
+- name: mds_bal_offload_rank0
+  type: bool
+  level: advanced
+  desc: offload mds rank 0 when distributing dirfrags
+  default: true
+  services:
+  - mds
+  flags:
+  - runtime
 # order of magnitude higher than split size
 - name: mds_bal_fragment_size_max
   type: int

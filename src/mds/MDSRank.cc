@@ -4166,6 +4166,7 @@ std::vector<std::string> MDSRankDispatcher::get_tracked_keys()
     "mds_bal_max_until",
     "mds_bal_merge_size",
     "mds_bal_mode",
+    "mds_bal_offload_rank0",
     "mds_bal_replicate_threshold",
     "mds_bal_sample_interval",
     "mds_bal_split_bits",

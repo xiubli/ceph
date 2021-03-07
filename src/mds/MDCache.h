@@ -1613,6 +1613,7 @@ private:
   time upkeep_last_release = clock::zero();
   std::atomic<bool> upkeep_trim_shutdown{false};
   std::optional<MemoryModel> upkeep_memory_stats;
+  bool bal_offload_rank0 = true;
   MemoryModel::mem_snap_t upkeep_mem_baseline;
 
   uint64_t kill_shutdown_at = 0;
