@@ -156,7 +156,7 @@ private:
   int64_t bal_split_bits;
   int64_t bal_split_size;
   int64_t bal_merge_size;
-  int64_t num_bal_times;
+  uint64_t num_bal_times;
 
   MDSRank *mds;
   Messenger *messenger;

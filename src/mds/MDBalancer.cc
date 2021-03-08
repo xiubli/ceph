@@ -100,7 +100,7 @@ MDBalancer::MDBalancer(MDSRank *m, Messenger *msgr, MonClient *monc) :
   bal_split_size = g_conf().get_val<int64_t>("mds_bal_split_size");
   bal_split_wr = g_conf().get_val<double>("mds_bal_split_wr");
   bal_unreplicate_threshold = g_conf().get_val<double>("mds_bal_unreplicate_threshold");
-  num_bal_times = g_conf().get_val<int64_t>("mds_bal_max");
+  num_bal_times = g_conf().get_val<uint64_t>("mds_bal_max");
 }
 
 void MDBalancer::handle_conf_change(const std::set<std::string>& changed, const MDSMap& mds_map)
@@ -134,7 +134,7 @@ void MDBalancer::handle_conf_change(const std::set<std::string>& changed, const 
   if (changed.count("mds_bal_unreplicate_threshold"))
     bal_unreplicate_threshold = g_conf().get_val<double>("mds_bal_unreplicate_threshold");
   if (changed.count("mds_bal_max"))
-    num_bal_times = g_conf().get_val<int64_t>("mds_bal_max");
+    num_bal_times = g_conf().get_val<uint64_t>("mds_bal_max");
 }
 
 bool MDBalancer::test_rank_mask(mds_rank_t rank)
