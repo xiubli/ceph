@@ -280,9 +280,8 @@ void MDBalancer::tick()
     last_heartbeat = now;
     send_heartbeat();
     num_bal_times--;
+    mds->mdcache->show_subtrees(10, true);
   }
-
-  mds->mdcache->show_subtrees(10, true);
 }
 
 
