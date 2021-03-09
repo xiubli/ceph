@@ -376,6 +376,8 @@ LogSegmentRef const& MDLog::_start_new_segment(SegmentBoundary* sb)
   ceph_assert(ceph_mutex_is_locked_by_me(mds->mds_lock));
 
   auto ls = std::make_shared<LogSegment>(event_seq);
+  if (segments.empty())
+    unexpired_segment_seq = event_seq;
   segments[event_seq] = ls;
   logger->inc(l_mdl_segadd);
   logger->set(l_mdl_seg, segments.size());
@@ -414,7 +416,7 @@ LogSegment::seq_t MDLog::_submit_entry(LogEvent *le, MDSLogContextBase* c)
   EMetaBlob *metablob = le->get_metablob();
   if (metablob) {
     for (auto& in : metablob->get_touched_inodes()) {
-      in->last_journaled = event_seq;
+      in->last_journal = event_seq;
     }
   }
 
@@ -428,7 +430,7 @@ LogSegment::seq_t MDLog::_submit_entry(LogEvent *le, MDSLogContextBase* c)
   le->set_stamp(ceph_clock_now());
 
   mdsmap_up_features = mds->mdsmap->get_up_features();
-  pending_events[ls->seq].push_back(PendingEvent(le, c));
+  pending_events[ls->seq].emplace_back(le, event_seq, c);
   num_events++;
 
   if (logger) {
@@ -483,8 +485,8 @@ protected:
 public:
   C_MDL_Flushed(MDLog *m, Context *w)
     : mdlog(m), wrapped(w) {}
-  C_MDL_Flushed(MDLog *m, uint64_t wp) : mdlog(m), wrapped(NULL) {
-    set_write_pos(wp);
+  C_MDL_Flushed(MDLog *m, uint64_t wp, uint64_t seq) : mdlog(m), wrapped(nullptr) {
+    set_write_pos(wp, seq);
   }
 };
 
@@ -547,10 +549,12 @@ void MDLog::_submit_thread()
       if (data.fin) {
 	fin = dynamic_cast<MDSLogContextBase*>(data.fin);
 	ceph_assert(fin);
-	fin->set_write_pos(new_write_pos);
+	fin->set_write_pos(new_write_pos, data.seq);
       } else {
-	fin = new C_MDL_Flushed(this, new_write_pos);
+	fin = new C_MDL_Flushed(this, new_write_pos, data.seq);
       }
+      if (EMetaBlob *blob = le->get_metablob())
+	fin->set_subtrees(std::move(blob->subtrees));
 
       journaler->wait_for_flush(fin);
 
@@ -566,7 +570,6 @@ void MDLog::_submit_thread()
 	Context* fin = dynamic_cast<Context*>(data.fin);
 	ceph_assert(fin);
 	C_MDL_Flushed *fin2 = new C_MDL_Flushed(this, fin);
-	fin2->set_write_pos(journaler->get_write_pos());
 	journaler->wait_for_flush(fin2);
       }
       if (data.flush)
@@ -587,7 +590,7 @@ void MDLog::wait_for_safe(Context* c)
 
   bool no_pending = true;
   if (!pending_events.empty()) {
-    pending_events.rbegin()->second.push_back(PendingEvent(NULL, c));
+    pending_events.rbegin()->second.emplace_back(nullptr, 0, c);
     no_pending = false;
     submit_cond.notify_all();
   }
@@ -605,7 +608,7 @@ void MDLog::flush()
   bool do_flush = unflushed > 0;
   unflushed = 0;
   if (!pending_events.empty()) {
-    pending_events.rbegin()->second.push_back(PendingEvent(NULL, NULL, true));
+    pending_events.rbegin()->second.emplace_back(nullptr, 0, nullptr, true);
     do_flush = false;
     submit_cond.notify_all();
   }
@@ -812,17 +815,18 @@ void MDLog::trim()
     } else {
       ceph_assert(expiring_segments.count(ls) == 0);
       new_expiring_segments++;
-      expiring_segments.insert(ls);
+      expiring_segments.emplace(ls, event_seq);
       expiring_events += ls->num_events;
+      uint64_t next_seq = (p != segments.end() ? p->first : event_seq + 1);
+      unexpired_segment_seq = next_seq;
       locker.unlock();
 
-      uint64_t last_seq = ls->seq;
       try_expire(ls, op_prio);
       log_trim_counter.hit();
       trim_end = ceph::coarse_mono_clock::now();
 
       locker.lock();
-      p = segments.lower_bound(last_seq + 1);
+      p = segments.lower_bound(next_seq);
     }
   }
 
@@ -888,11 +892,12 @@ int MDLog::trim_to(SegmentBoundary::seq_t seq)
       dout(5) << "trim already expired " << *ls << dendl;
     } else {
       ceph_assert(expiring_segments.count(ls) == 0);
-      expiring_segments.insert(ls);
+      expiring_segments.emplace(ls, event_seq);
       expiring_events += ls->num_events;
+      uint64_t next_seq = (p != segments.end() ? p->first : event_seq + 1);
+      unexpired_segment_seq = next_seq;
       locker.unlock();
 
-      uint64_t next_seq = ls->seq + 1;
       try_expire(ls, CEPH_MSG_PRIO_DEFAULT);
 
       locker.lock();
@@ -919,9 +924,6 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
   } else {
     dout(10) << "try_expire expired " << *ls << dendl;
     submit_mutex.lock();
-    ceph_assert(expiring_segments.count(ls));
-    expiring_segments.erase(ls);
-    expiring_events -= ls->num_events;
     _expired(ls);
     submit_mutex.unlock();
   }
@@ -983,8 +985,14 @@ void MDLog::_trim_expired_segments(auto& locker, MDSContext* ctx)
       }
     }
 
-    if (!expired_segments.count(ls)) {
+    auto eit = expired_segments.find(ls);
+    if (eit == expired_segments.end()) {
       dout(10) << __func__ << " waiting for expiry " << *ls << dendl;
+      break;
+    }
+    if (std::min<uint64_t>(event_seq, eit->second) > safe_event_seq) {
+      dout(10) << __func__ << " waiting for event " << eit->second
+	       << " to be safe" << dendl;
       break;
     }
 
@@ -1003,11 +1011,17 @@ void MDLog::_expired(LogSegmentRef const& ls)
 
   dout(5) << "_expired " << *ls << dendl;
 
+  auto it = expiring_segments.find(ls);
+  ceph_assert(it != expiring_segments.end());
+  uint64_t seq = it->second;
+  expiring_segments.erase(it);
+  expiring_events -= ls->num_events;
+
   if (!mds_is_shutting_down && ls == peek_current_segment()) {
     dout(5) << "_expired not expiring current segment, and !mds_is_shutting_down" << dendl;
   } else {
     // expired.
-    expired_segments.insert(ls);
+    expired_segments.emplace(ls, seq);
     expired_events += ls->num_events;
 
     // Trigger all waiters
@@ -1598,6 +1612,10 @@ void MDLog::_replay_thread()
   }
 
   safe_pos = journaler->get_write_safe_pos();
+  if (event_seq) {
+    safe_event_seq = event_seq;
+    unexpired_segment_seq = segments.begin()->first;
+  }
 
   dout(10) << "_replay_thread kicking waiters" << dendl;
   {

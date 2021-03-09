@@ -78,9 +78,17 @@ public:
   MDLog(MDSRank *m);
   ~MDLog();
 
-  const std::set<LogSegmentRef> &get_expiring_segments() const
+  std::vector<LogSegmentRef> get_expiring_segments() const
   {
-    return expiring_segments;
+    std::vector<LogSegmentRef> vec;
+    vec.reserve(expiring_segments.size());
+    for (auto& p : expiring_segments)
+      vec.push_back(p.first);
+    return vec;
+  }
+
+  uint64_t get_unexpired_segment_seq() const {
+    return unexpired_segment_seq;
   }
 
   void create_logger();
@@ -190,8 +198,10 @@ public:
 
 protected:
   struct PendingEvent {
-    PendingEvent(LogEvent *e, Context* c, bool f=false) : le(e), fin(c), flush(f) {}
+    PendingEvent(LogEvent *e, uint64_t s, Context* c, bool f=false)
+      : le(e), seq(s), fin(c), flush(f) {}
     LogEvent *le;
+    uint64_t seq;
     Context* fin;
     bool flush;
   };
@@ -247,11 +257,12 @@ protected:
   void _recovery_thread(MDSContext *completion);
   void _reformat_journal(JournalPointer const &jp, Journaler *old_journal, MDSContext *completion);
 
-  void set_safe_pos(uint64_t pos)
+  void set_safe_pos(uint64_t pos, uint64_t seq)
   {
     std::lock_guard l(submit_mutex);
     ceph_assert(pos >= safe_pos);
     safe_pos = pos;
+    safe_event_seq = seq;
   }
 
   void _submit_thread();
@@ -272,6 +283,8 @@ protected:
   // submit_entry wait_for_safe callbacks have already
   // been called.
   uint64_t safe_pos = 0;
+  uint64_t safe_event_seq = 0;
+  std::atomic<uint64_t> unexpired_segment_seq = 0;
 
   inodeno_t ino;
   Journaler *journaler = nullptr;
@@ -284,6 +297,8 @@ protected:
 
   // -- segments --
   std::map<uint64_t,LogSegmentRef> segments;
+  std::map<LogSegmentRef, uint64_t> expiring_segments;
+  std::map<LogSegmentRef, uint64_t> expired_segments;
   std::size_t pre_segments_size = 0;            // the num of segments when the mds finished replay-journal, to calc the num of segments growing
   LogSegment::seq_t event_seq = 0;
   uint64_t expiring_events = 0;
@@ -324,8 +339,6 @@ private:
   bool skip_unbounded_events;
 
   std::set<uint64_t> major_segments;
-  std::set<LogSegmentRef> expired_segments;
-  std::set<LogSegmentRef> expiring_segments;
   uint64_t minor_segments_since_last_major_segment = 0;
   double log_warn_factor;
 

@@ -425,9 +425,9 @@ void EMetaBlob::add_dir_context(CDir *dir)
 
     // have we journaled this inode since the last subtree map?
     auto last_major_segment_seq = mds->mdlog->get_last_major_segment_seq();
-    if (diri->last_journaled >= last_major_segment_seq) {
+    if (diri->last_journal >= last_major_segment_seq) {
       dout(20) << "EMetaBlob::add_dir_context(" << dir << ") already have diri in this segment ("
-               << diri->last_journaled << " >= " << last_major_segment_seq << ")" << dendl;
+               << diri->last_journal << " >= " << last_major_segment_seq << ")" << dendl;
       break;
     }
 

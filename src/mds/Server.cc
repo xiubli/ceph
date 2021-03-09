@@ -2098,7 +2098,7 @@ void Server::journal_and_reply(const MDRequestRef& mdr, CInode *in, CDentry *dn,
   if (dn)
     mdr->pin(dn);
 
-  early_reply(mdr, in, dn);
+  early_reply(mdr, le->get_metablob(), in, dn);
   
   mdr->committing = true;
   submit_mdlog_entry(le, fin, mdr, __func__);
@@ -2260,7 +2260,7 @@ void Server::perf_gather_op_latency(const cref_t<MClientRequest> &req, utime_t l
   logger->tinc(code, lat);   
 }
 
-void Server::early_reply(const MDRequestRef& mdr, CInode *tracei, CDentry *tracedn)
+void Server::early_reply(const MDRequestRef& mdr, EMetaBlob *blob, CInode *tracei, CDentry *tracedn)
 {
   if (!g_conf()->mds_early_reply)
     return;
@@ -2290,6 +2290,17 @@ void Server::early_reply(const MDRequestRef& mdr, CInode *tracei, CDentry *trace
     return;
   }
 
+  if (blob) {
+    // make sure subtrees are already journaled. otherwise, auth mds of
+    // these subtrees can change during failover.
+    uint64_t seq = mdlog->get_unexpired_segment_seq();
+    for (auto& d : blob->subtrees) {
+      if (d->last_journaled < seq) {
+	dout(10) << "early_reply - subtree was not in log, not allowed" << dendl;
+	return;
+      }
+    }
+  }
 
   auto reply = ceph::make_message<MClientReply>(*req, 0);
   reply->set_unsafe();

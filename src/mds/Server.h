@@ -213,7 +213,7 @@ public:
                           const MDRequestRef& mdr, std::string_view event);
   void dispatch_client_request(const MDRequestRef& mdr);
   void perf_gather_op_latency(const cref_t<MClientRequest> &req, utime_t lat);
-  void early_reply(const MDRequestRef& mdr, CInode *tracei, CDentry *tracedn);
+  void early_reply(const MDRequestRef& mdr, EMetaBlob *blob, CInode *tracei, CDentry *tracedn);
   void respond_to_request(const MDRequestRef& mdr, int r = 0);
   void set_trace_dist(const ref_t<MClientReply> &reply, CInode *in, CDentry *dn,
 		      const MDRequestRef& mdr);
