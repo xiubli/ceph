@@ -998,7 +998,7 @@ void Locker::invalidate_lock_cache(MDLockCache *lock_cache)
 
   Capability *cap = lock_cache->client_cap;
   if (cap) {
-    int cap_bit = lock_cache->get_cap_bit();
+    auto cap_bit = lock_cache->get_cap_bit();
     cap->clear_lock_cache_allowed(cap_bit);
     if (cap->issued() & cap_bit) {
       issue_caps(lock_cache->get_dir_inode(), cap);
@@ -1006,18 +1006,11 @@ void Locker::invalidate_lock_cache(MDLockCache *lock_cache)
       cap = nullptr;
     }
   } else {
-    /* cap is removed but the lock_cache may not yet be 0 ref */
     lock_cache->item_cap_lock_cache.remove_myself();
-  }
-  if (!cap) {
-    /* the cap is removed or we lost relevant op rights */
-    if (lock_cache->cap_ref) {
-      put_lock_cache(lock_cache);
-      lock_cache->cap_ref = false;
-    }
-    /* N.B.: the lock cache may still be associated with the cap even when
-     * invalidated so a new lock cache is not created.
-     */
+    lock_cache->client_cap = nullptr;
+    if (!lock_cache->cap_waiters.empty())
+      mds->queue_waiters(lock_cache->cap_waiters);
+    put_lock_cache(lock_cache);
   }
 }
 
@@ -1055,6 +1048,36 @@ void Locker::invalidate_lock_caches(SimpleLock *lock)
   }
 }
 
+bool Locker::revoke_async_dirop_caps(CInode *in, MDSGatherBuilder &gather_bld)
+{
+  dout(10) << "revoke_async_dirop_caps on " << *in << dendl;
+  client_t loner = in->get_loner();
+  if (loner < 0)
+    return false;
+  Capability *cap = in->get_client_cap(loner);
+  if (!cap)
+    return false;
+
+  cap->clear_lock_cache_allowed(-1);
+  if (!(cap->issued() & CEPH_CAP_ANY_DIR_OPS))
+    return false;
+
+  for (auto it = cap->lock_caches.begin(); !it.end(); ) {
+    MDLockCache* lock_cache = *it;
+    ++it;
+    if (!lock_cache->invalidating)
+      invalidate_lock_cache(lock_cache);
+  }
+
+  unsigned n = 0;
+  for (auto it = cap->lock_caches.begin(); !it.end(); ++it) {
+    MDLockCache* lock_cache = *it;
+    lock_cache->cap_waiters.push_back(gather_bld.new_sub());
+    ++n;
+  }
+  return n > 0;
+}
+
 void Locker::create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layout_t *dir_layout)
 {
   if (mdr->lock_cache)
@@ -1085,12 +1108,6 @@ void Locker::create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layou
       dout(10) << " lock cache already exists for " << ceph_mds_op_name(opcode) << ", noop" << dendl;
       return;
     }
-  }
-
-  int cap_bit = MDLockCache::get_cap_bit_for_lock_cache(opcode);
-  if (!(cap->issued() & cap_bit)) {
-    dout(10) << " client cap lacks rights for lock cache: " << ccap_string(cap_bit) << dendl;
-    return;
   }
 
   set<MDSCacheObject*> ancestors;
@@ -1150,8 +1167,6 @@ void Locker::create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layou
   auto lock_cache = new MDLockCache(cap, opcode);
   if (dir_layout)
     lock_cache->set_dir_layout(*dir_layout);
-  cap->set_lock_cache_allowed(lock_cache->get_cap_bit());
-
   for (auto dir : dfv) {
     // prevent subtree migration
     lock_cache->auth_pin(dir);

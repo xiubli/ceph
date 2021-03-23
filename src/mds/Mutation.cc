@@ -22,6 +22,7 @@
 #include "CDir.h"
 #include "messages/MClientRequest.h"
 #include "messages/MMDSPeerRequest.h"
+#include "LogSegment.h"
 
 using namespace std;
 
@@ -681,15 +682,14 @@ void MDLockCache::print(std::ostream& out) const {
   out << ")";
 }
 
-int MDLockCache::get_cap_bit_for_lock_cache(int opcode)
+void MDLockCache::update_caps_allowed(LogSegmentRef& ls)
 {
-  switch(opcode) {
-    case CEPH_MDS_OP_CREATE:
-      return CEPH_CAP_DIR_CREATE;
-    case CEPH_MDS_OP_UNLINK:
-      return CEPH_CAP_DIR_UNLINK;
-    default:
-      ceph_abort("unsupported opcode");
-      return 0;
+  if (invalidating)
+    return;
+
+  client_t loner = diri->get_loner();
+  if (loner >= 0 && loner == client_cap->get_client()) {
+    client_cap->set_lock_cache_allowed(get_cap_bit());
+    ls->open_files.push_back(&diri->item_open_file);
   }
 }

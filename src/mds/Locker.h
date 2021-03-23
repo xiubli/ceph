@@ -89,12 +89,12 @@ public:
   void request_drop_non_rdlocks(const MDRequestRef& r);
   void request_drop_locks(const MDRequestRef& r);
 
-  int get_cap_bit_for_lock_cache(int op);
   void create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layout_t *dir_layout=nullptr);
   bool find_and_attach_lock_cache(const MDRequestRef& mdr, CInode *diri);
   void invalidate_lock_caches(CDir *dir);
   void invalidate_lock_caches(SimpleLock *lock);
   void invalidate_lock_cache(MDLockCache *lock_cache);
+  bool revoke_async_dirop_caps(CInode *in, MDSGatherBuilder &gather_bld);
   void eval_lock_caches(Capability *cap);
   void put_lock_cache(MDLockCache* lock_cache);
 

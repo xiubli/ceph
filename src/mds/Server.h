@@ -608,6 +608,8 @@ private:
   bool mds_allow_async_dirops = true;
   bool forward_all_requests_to_auth = false;
   bool replay_unsafe_with_closed_session = false;
+  bool early_reply_enabled = false;
+  bool client_async_dirop = false;
   double cap_revoke_eviction_timeout = 0;
   uint64_t max_snaps_per_dir = 100;
   // long snapshot names have the following format: "_<SNAPSHOT-NAME>_<INODE-NUMBER>"
