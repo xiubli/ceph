@@ -601,6 +601,7 @@ public:
   void _freeze_tree();
   void unfreeze_tree();
   void adjust_freeze_after_rename(CDir *dir);
+  std::vector<CDir*> get_subtrees_under();
 
   bool freeze_dir();
   void _freeze_dir();
@@ -703,6 +704,8 @@ public:
 
   elist<CDentry*> dirty_dentries;
   elist<CDir*>::item item_dirty, item_new;
+
+  elist<CInode*> dir_inodes;
 
   // lock caches that auth-pin me
   elist<MDLockCache::DirItem*> lock_caches_with_auth_pins;
