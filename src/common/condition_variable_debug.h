@@ -10,15 +10,11 @@
 
 namespace ceph {
 
-namespace mutex_debug_detail {
-  template<bool> class mutex_debug_impl;
-}
-
+template<class T>
 class condition_variable_debug {
-  using mutex_debug = mutex_debug_detail::mutex_debug_impl<false>;
 
   pthread_cond_t cond;
-  mutex_debug* waiter_mutex;
+  T* waiter_mutex;
 
   condition_variable_debug&
   operator=(const condition_variable_debug&) = delete;
@@ -27,16 +23,16 @@ class condition_variable_debug {
 public:
   condition_variable_debug();
   ~condition_variable_debug();
-  void wait(std::unique_lock<mutex_debug>& lock);
+  void wait(std::unique_lock<T>& lock);
   template<class Predicate>
-  void wait(std::unique_lock<mutex_debug>& lock, Predicate pred) {
+  void wait(std::unique_lock<T>& lock, Predicate pred) {
     while (!pred()) {
       wait(lock);
     }
   }
   template<class Clock, class Duration>
   std::cv_status wait_until(
-    std::unique_lock<mutex_debug>& lock,
+    std::unique_lock<T>& lock,
     const std::chrono::time_point<Clock, Duration>& when) {
     if constexpr (Clock::is_steady) {
       // convert from mono_clock to real_clock
@@ -52,7 +48,7 @@ public:
   }
   template<class Rep, class Period>
   std::cv_status wait_for(
-    std::unique_lock<mutex_debug>& lock,
+    std::unique_lock<T>& lock,
     const std::chrono::duration<Rep, Period>& awhile) {
     ceph::real_time when{ceph::real_clock::now()};
     when += awhile;
@@ -61,7 +57,7 @@ public:
   }
   template<class Rep, class Period, class Pred>
   bool wait_for(
-    std::unique_lock<mutex_debug>& lock,
+    std::unique_lock<T>& lock,
     const std::chrono::duration<Rep, Period>& awhile,
     Pred pred) {
     ceph::real_time when{ceph::real_clock::now()};
@@ -77,7 +73,7 @@ public:
   void notify_one();
   void notify_all(bool sloppy = false);
 private:
-  std::cv_status _wait_until(mutex_debug* mutex, timespec* ts);
+  std::cv_status _wait_until(T* mutex, timespec* ts);
 };
 
 } // namespace ceph

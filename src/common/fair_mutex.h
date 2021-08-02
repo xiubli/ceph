@@ -52,3 +52,5 @@ private:
   ceph::mutex mutex;
 };
 } // namespace ceph
+
+extern template class ceph::ceph_condition_variable<ceph::fair_mutex>;

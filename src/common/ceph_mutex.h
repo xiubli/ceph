@@ -77,7 +77,7 @@ namespace ceph {
 namespace ceph {
   typedef ceph::mutex_debug mutex;
   typedef ceph::mutex_recursive_debug recursive_mutex;
-  typedef ceph::condition_variable_debug condition_variable;
+  typedef ceph::condition_variable_debug<ceph::mutex_debug> condition_variable;
   typedef ceph::shared_mutex_debug shared_mutex;
 
   // pass arguments to mutex_debug ctor
@@ -172,3 +172,4 @@ ceph::containers::tiny_vector<LockT> make_lock_container(
 }
 } // namespace ceph
 
+extern template class ceph::ceph_condition_variable<ceph::mutex>;
