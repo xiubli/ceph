@@ -1,9 +1,11 @@
 #include "condition_variable_debug.h"
 #include "common/mutex_debug.h"
+#include "common/fair_mutex.h"
 
 namespace ceph {
 
-condition_variable_debug::condition_variable_debug()
+template <class Mutex>
+condition_variable_debug<Mutex>::condition_variable_debug()
   : waiter_mutex{nullptr}
 {
   int r = pthread_cond_init(&cond, nullptr);
@@ -12,12 +14,14 @@ condition_variable_debug::condition_variable_debug()
   }
 }
 
-condition_variable_debug::~condition_variable_debug()
+template <class Mutex>
+condition_variable_debug<Mutex>::~condition_variable_debug()
 {
   pthread_cond_destroy(&cond);
 }
 
-void condition_variable_debug::wait(std::unique_lock<mutex_debug>& lock)
+template <class Mutex>
+void condition_variable_debug<Mutex>::wait(std::unique_lock<Mutex>& lock)
 {
   // make sure this cond is used with one mutex only
   ceph_assert(waiter_mutex == nullptr ||
@@ -32,7 +36,8 @@ void condition_variable_debug::wait(std::unique_lock<mutex_debug>& lock)
   waiter_mutex->_post_lock();
 }
 
-void condition_variable_debug::notify_one()
+template <class Mutex>
+void condition_variable_debug<Mutex>::notify_one()
 {
   // make sure signaler is holding the waiter's lock.
   ceph_assert(waiter_mutex == nullptr ||
@@ -42,7 +47,8 @@ void condition_variable_debug::notify_one()
   }
 }
 
-void condition_variable_debug::notify_all(bool sloppy)
+template <class Mutex>
+void condition_variable_debug<Mutex>::notify_all(bool sloppy)
 {
   if (!sloppy) {
     // make sure signaler is holding the waiter's lock.
@@ -54,8 +60,9 @@ void condition_variable_debug::notify_all(bool sloppy)
   }
 }
 
-std::cv_status condition_variable_debug::_wait_until(mutex_debug* mutex,
-                                                     timespec* ts)
+template <class Mutex>
+std::cv_status condition_variable_debug<Mutex>::_wait_until(Mutex* mutex,
+                                                        timespec* ts)
 {
   // make sure this cond is used with one mutex only
   ceph_assert(waiter_mutex == nullptr ||
@@ -77,3 +84,6 @@ std::cv_status condition_variable_debug::_wait_until(mutex_debug* mutex,
 }
 
 } // namespace ceph
+
+template class ceph::condition_variable_debug<ceph::fair_mutex>;
+template class ceph::condition_variable_debug<ceph::mutex_debug>;
