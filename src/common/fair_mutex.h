@@ -2,21 +2,47 @@
 
 #pragma once
 
-#include "common/ceph_mutex.h"
+#include "include/ceph_assert.h"
 
 #include <thread>
 #include <string>
+#include <mutex>
+#include <condition_variable>
 
 namespace ceph {
 /// a FIFO mutex
 class fair_mutex {
 public:
-  fair_mutex(const std::string& name)
-    : mutex{ceph::make_mutex(name)}
-  {}
+  fair_mutex(const std::string& name) {}
   ~fair_mutex() = default;
   fair_mutex(const fair_mutex&) = delete;
   fair_mutex& operator=(const fair_mutex&) = delete;
+
+#ifdef CEPH_DEBUG_MUTEX
+  pthread_mutex_t* native_handle() {
+    return mutex.native_handle();
+  }
+
+  void _pre_unlock() {
+    mutex.lock();
+    ceph_assert(locked_by == std::this_thread::get_id());
+    ++unblock_id;
+    locked_by = std::thread::id();
+    // wake up all the waiters before giving up the lock
+    // in condition_variable_debug's wait()
+    int r = pthread_cond_broadcast(cond.native_handle());
+    ceph_assert(r == 0);
+  }
+
+  void _post_lock() {
+    const unsigned my_id = next_id++;
+    while (my_id != unblock_id) {
+      pthread_cond_wait(cond.native_handle(), mutex.native_handle());
+    }
+    locked_by = std::this_thread::get_id();
+    mutex.unlock();
+  }
+#endif
 
   void lock()
   {
@@ -71,8 +97,8 @@ private:
 private:
   unsigned next_id = 0;
   unsigned unblock_id = 0;
-  ceph::condition_variable cond;
-  ceph::mutex mutex;
+  std::condition_variable cond;
+  std::mutex mutex;
 #ifdef CEPH_DEBUG_MUTEX
   std::thread::id locked_by = {};
 #endif

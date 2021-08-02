@@ -73,11 +73,13 @@ namespace ceph {
 #include "common/condition_variable_debug.h"
 #include "common/mutex_debug.h"
 #include "common/shared_mutex_debug.h"
+#include "common/fair_mutex.h"
 
 namespace ceph {
   typedef ceph::mutex_debug mutex;
   typedef ceph::mutex_recursive_debug recursive_mutex;
   typedef ceph::condition_variable_debug<ceph::mutex_debug> condition_variable;
+  typedef ceph::condition_variable_debug<ceph::fair_mutex> fair_condition_variable;
   typedef ceph::shared_mutex_debug shared_mutex;
 
   // pass arguments to mutex_debug ctor
@@ -116,6 +118,7 @@ namespace ceph {
 #include <condition_variable>
 #include <mutex>
 #include <shared_mutex>
+#include "common/fair_mutex.h"
 
 
 namespace ceph {
@@ -123,6 +126,7 @@ namespace ceph {
   typedef std::mutex mutex;
   typedef std::recursive_mutex recursive_mutex;
   typedef std::condition_variable condition_variable;
+  typedef std::condition_variable_any fair_condition_variable;
   typedef std::shared_mutex shared_mutex;
 
   // discard arguments to make_mutex (they are for debugging only)
