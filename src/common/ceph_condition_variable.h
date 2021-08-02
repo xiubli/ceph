@@ -11,18 +11,18 @@
 namespace ceph {
 
 template<class T>
-class condition_variable_debug {
+class ceph_condition_variable {
 
   pthread_cond_t cond;
   T* waiter_mutex;
 
-  condition_variable_debug&
-  operator=(const condition_variable_debug&) = delete;
-  condition_variable_debug(const condition_variable_debug&) = delete;
+  ceph_condition_variable&
+  operator=(const ceph_condition_variable&) = delete;
+  ceph_condition_variable(const ceph_condition_variable&) = delete;
 
 public:
-  condition_variable_debug();
-  ~condition_variable_debug();
+  ceph_condition_variable();
+  ~ceph_condition_variable();
   void wait(std::unique_lock<T>& lock);
   template<class Predicate>
   void wait(std::unique_lock<T>& lock, Predicate pred) {

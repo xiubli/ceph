@@ -1,4 +1,4 @@
-#include "condition_variable_debug.h"
+#include "ceph_condition_variable.h"
 #include "common/mutex_debug.h"
 #include "common/fair_mutex.h"
 #include "common/ceph_mutex.h"
@@ -6,7 +6,7 @@
 namespace ceph {
 
 template <class T>
-condition_variable_debug<T>::condition_variable_debug()
+ceph_condition_variable<T>::ceph_condition_variable()
   : waiter_mutex{nullptr}
 {
   int r = pthread_cond_init(&cond, nullptr);
@@ -16,13 +16,13 @@ condition_variable_debug<T>::condition_variable_debug()
 }
 
 template <class T>
-condition_variable_debug<T>::~condition_variable_debug()
+ceph_condition_variable<T>::~ceph_condition_variable()
 {
   pthread_cond_destroy(&cond);
 }
 
 template <class T>
-void condition_variable_debug<T>::wait(std::unique_lock<T>& lock)
+void ceph_condition_variable<T>::wait(std::unique_lock<T>& lock)
 {
   // make sure this cond is used with one mutex only
   ceph_assert(waiter_mutex == nullptr ||
@@ -38,7 +38,7 @@ void condition_variable_debug<T>::wait(std::unique_lock<T>& lock)
 }
 
 template <class T>
-void condition_variable_debug<T>::notify_one()
+void ceph_condition_variable<T>::notify_one()
 {
   // make sure signaler is holding the waiter's lock.
   ceph_assert(waiter_mutex == nullptr ||
@@ -49,7 +49,7 @@ void condition_variable_debug<T>::notify_one()
 }
 
 template <class T>
-void condition_variable_debug<T>::notify_all(bool sloppy)
+void ceph_condition_variable<T>::notify_all(bool sloppy)
 {
   if (!sloppy) {
     // make sure signaler is holding the waiter's lock.
@@ -62,8 +62,8 @@ void condition_variable_debug<T>::notify_all(bool sloppy)
 }
 
 template <class T>
-std::cv_status condition_variable_debug<T>::_wait_until(T* mutex,
-                                                        timespec* ts)
+std::cv_status ceph_condition_variable<T>::_wait_until(T* mutex,
+                                                       timespec* ts)
 {
   // make sure this cond is used with one mutex only
   ceph_assert(waiter_mutex == nullptr ||
