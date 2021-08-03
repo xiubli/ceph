@@ -69,3 +69,46 @@ TEST(FairMutex, fair)
     team.join();
   }
 }
+
+TEST(FairMutex, faircond)
+{
+  int NR = 1000;
+  int counter = 0;
+  ceph::fair_mutex mutex{"fair::fair"};
+  ceph::ceph_condition_variable<ceph::fair_mutex> cond;
+  auto threadA = [&]() {
+    while (1) {
+      std::unique_lock lock{mutex};
+      if (counter >= NR)
+        break;
+      cond.wait(lock, [&] {
+        return counter && (counter % 3 == 0 || counter >= NR);
+      });
+    }
+  };
+  auto threadB = [&]() {
+    while (1) {
+      std::unique_lock lock{mutex};
+      if (counter >= NR)
+        break;
+      cond.wait(lock, [&] {
+        return counter && (counter % 7 == 0 || counter >= NR);
+      });
+    }
+  };
+  auto threadC = [&]() {
+    while (1) {
+      std::lock_guard lock{mutex};
+      if (++counter >= NR)
+        break;
+      cond.notify_one();
+    }
+  };
+
+  std::thread tA = std::thread(threadA);
+  std::thread tB = std::thread(threadB);
+  std::thread tC = std::thread(threadC);
+  tA.join();
+  tB.join();
+  tC.join();
+}
