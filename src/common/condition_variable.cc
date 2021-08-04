@@ -1,11 +1,11 @@
-#include "condition_variable_debug.h"
+#include "condition_variable.h"
 #include "common/mutex_debug.h"
 #include "common/fair_mutex.h"
 
 namespace ceph {
 
 template <class Mutex>
-condition_variable_debug<Mutex>::condition_variable_debug()
+condition_variable_impl<Mutex>::condition_variable_impl()
   : waiter_mutex{nullptr}
 {
   int r = pthread_cond_init(&cond, nullptr);
@@ -15,13 +15,13 @@ condition_variable_debug<Mutex>::condition_variable_debug()
 }
 
 template <class Mutex>
-condition_variable_debug<Mutex>::~condition_variable_debug()
+condition_variable_impl<Mutex>::~condition_variable_impl()
 {
   pthread_cond_destroy(&cond);
 }
 
 template <class Mutex>
-void condition_variable_debug<Mutex>::wait(std::unique_lock<Mutex>& lock)
+void condition_variable_impl<Mutex>::wait(std::unique_lock<Mutex>& lock)
 {
   // make sure this cond is used with one mutex only
   ceph_assert(waiter_mutex == nullptr ||
@@ -37,7 +37,7 @@ void condition_variable_debug<Mutex>::wait(std::unique_lock<Mutex>& lock)
 }
 
 template <class Mutex>
-void condition_variable_debug<Mutex>::notify_one()
+void condition_variable_impl<Mutex>::notify_one()
 {
   // make sure signaler is holding the waiter's lock.
   ceph_assert(waiter_mutex == nullptr ||
@@ -48,7 +48,7 @@ void condition_variable_debug<Mutex>::notify_one()
 }
 
 template <class Mutex>
-void condition_variable_debug<Mutex>::notify_all(bool sloppy)
+void condition_variable_impl<Mutex>::notify_all(bool sloppy)
 {
   if (!sloppy) {
     // make sure signaler is holding the waiter's lock.
@@ -61,7 +61,7 @@ void condition_variable_debug<Mutex>::notify_all(bool sloppy)
 }
 
 template <class Mutex>
-std::cv_status condition_variable_debug<Mutex>::_wait_until(Mutex* mutex,
+std::cv_status condition_variable_impl<Mutex>::_wait_until(Mutex* mutex,
                                                         timespec* ts)
 {
   // make sure this cond is used with one mutex only
@@ -85,5 +85,5 @@ std::cv_status condition_variable_debug<Mutex>::_wait_until(Mutex* mutex,
 
 } // namespace ceph
 
-template class ceph::condition_variable_debug<ceph::fair_mutex>;
-template class ceph::condition_variable_debug<ceph::mutex_debug>;
+template class ceph::condition_variable_impl<ceph::fair_mutex>;
+template class ceph::condition_variable_impl<ceph::mutex_debug>;

@@ -61,7 +61,7 @@ set(common_srcs
   code_environment.cc
   common_init.cc
   compat.cc
-  condition_variable_debug.cc
+  condition_variable.cc
   config.cc
   config_values.cc
   dout.cc

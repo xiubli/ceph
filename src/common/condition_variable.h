@@ -13,18 +13,18 @@
 namespace ceph {
 
 template<class Mutex>
-class condition_variable_debug {
+class condition_variable_impl {
 
   pthread_cond_t cond;
   Mutex* waiter_mutex;
 
-  condition_variable_debug&
-  operator=(const condition_variable_debug&) = delete;
-  condition_variable_debug(const condition_variable_debug&) = delete;
+  condition_variable_impl&
+  operator=(const condition_variable_impl&) = delete;
+  condition_variable_impl(const condition_variable_impl&) = delete;
 
 public:
-  condition_variable_debug();
-  ~condition_variable_debug();
+  condition_variable_impl();
+  ~condition_variable_impl();
   void wait(std::unique_lock<Mutex>& lock);
   template<class Predicate>
   void wait(std::unique_lock<Mutex>& lock, Predicate pred) {
@@ -80,5 +80,5 @@ private:
 
 } // namespace ceph
 
-extern template class ceph::condition_variable_debug<ceph::mutex_debug>;
-extern template class ceph::condition_variable_debug<ceph::fair_mutex>;
+extern template class ceph::condition_variable_impl<ceph::mutex_debug>;
+extern template class ceph::condition_variable_impl<ceph::fair_mutex>;

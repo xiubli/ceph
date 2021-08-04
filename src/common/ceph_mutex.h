@@ -70,14 +70,14 @@ namespace ceph {
 // debug (lockdep-capable, various sanity checks and asserts)
 // ============================================================================
 
-#include "common/condition_variable_debug.h"
+#include "common/condition_variable.h"
 #include "common/mutex_debug.h"
 #include "common/shared_mutex_debug.h"
 
 namespace ceph {
   typedef ceph::mutex_debug mutex;
   typedef ceph::mutex_recursive_debug recursive_mutex;
-  typedef ceph::condition_variable_debug<ceph::mutex_debug> condition_variable;
+  typedef ceph::condition_variable_impl<ceph::mutex_debug> condition_variable;
   typedef ceph::shared_mutex_debug shared_mutex;
 
   // pass arguments to mutex_debug ctor
