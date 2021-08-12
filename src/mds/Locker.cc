@@ -129,26 +129,76 @@ void Locker::tick()
  *
  */
 
-void Locker::send_lock_message(SimpleLock *lock, int msg)
-{
-  for (const auto &it : lock->get_parent()->get_replicas()) {
-    if (mds->is_cluster_degraded() &&
-	mds->mdsmap->get_state(it.first) < MDSMap::STATE_REJOIN)
-      continue;
-    auto m = make_message<MLock>(lock, msg, mds->get_nodeid());
-    mds->send_message_mds(m, it.first);
-  }
-}
-
 void Locker::send_lock_message(SimpleLock *lock, int msg, const bufferlist &data)
 {
-  for (const auto &it : lock->get_parent()->get_replicas()) {
+  dout(12) << __func__ << " a=" << lock->get_lock_action_name(msg)
+	   << " on " << *lock << " " << *lock->get_parent() << dendl;
+
+  bool gather = (msg == LOCK_AC_LOCK || msg == LOCK_AC_SYNC || msg == LOCK_AC_MIX) &&
+		data.length() == 0;
+
+  bool may_lazy = false;
+  ScatterLock *slock = dynamic_cast<ScatterLock*>(lock);
+  if (slock) {
+    int state = lock->get_state();
+    switch(msg) {
+    case LOCK_AC_MIX:
+      if (lock->get_sm()->states[state].replica_state == LOCK_LOCK) {
+	may_lazy = true;
+	ceph_assert(!gather);
+      }
+      break;
+    case LOCK_AC_LOCK:
+      if (state == LOCK_MIX_LOCK2 || state == LOCK_MIX_EXCL || state == LOCK_MIX_TSYN) {
+	may_lazy = true;
+	ceph_assert(gather);
+      }
+      break;
+    case LOCK_AC_SYNC:
+      if (gather && state == LOCK_MIX_SYNC)
+	may_lazy = true;
+      break;
+    default:
+      ;
+    }
+  }
+
+  MDSCacheObject *obj = lock->get_parent();
+  CInode *in = slock ? static_cast<CInode*>(obj) : nullptr;
+  for (const auto &p : obj->get_replicas()) {
+    auto _msg = msg;
+    auto _gather = gather;
+    if (may_lazy) {
+      if (msg == LOCK_AC_MIX) {
+	if (!in->has_subtree_root_dirfrag(p.first)) {
+	  dout(15) << " adding lazy scatter for mds." << p.first << " " << *lock << " on " << *in << dendl;
+	  slock->add_lazy_scatter(p.first);
+	  continue;
+	}
+      } else if (msg == LOCK_AC_LOCK) {
+	if (slock->remove_lazy_scatter(p.first)) {
+	  dout(15) << " removing lazy scatter mds." << p.first << " " << *lock << " on " << *in << dendl;
+	  continue;
+	}
+      } else if (msg == LOCK_AC_SYNC) {
+	if (slock->remove_lazy_scatter(p.first)) {
+	  dout(15) << " removing lazy scatter mds." << p.first << " " << *lock << " on " << *in << dendl;
+	  _msg = LOCK_AC_MIXSYNC;
+	  _gather = false;
+	}
+      }
+    }
+
+    if (_gather)
+      lock->add_gather(p.first);
+
     if (mds->is_cluster_degraded() &&
-	mds->mdsmap->get_state(it.first) < MDSMap::STATE_REJOIN)
+	mds->mdsmap->get_state(p.first) < MDSMap::STATE_REJOIN)
       continue;
-    auto m = make_message<MLock>(lock, msg, mds->get_nodeid());
+
+    auto m = make_message<MLock>(lock, _msg, mds->get_nodeid());
     m->set_data(data);
-    mds->send_message_mds(m, it.first);
+    mds->send_message_mds(m, p.first);
   }
 }
 
@@ -1379,10 +1429,10 @@ void Locker::eval_gather(SimpleLock *lock, bool first, bool *pneed_issue, MDSCon
       if (lock->get_state() == LOCK_MIX_LOCK &&
 	  lock->get_parent()->is_replicated()) {
 	dout(10) << " finished (local) gather for mix->lock, now gathering from replicas" << dendl;
-	send_lock_message(lock, LOCK_AC_LOCK);
-	lock->init_gather();
 	lock->set_state(LOCK_MIX_LOCK2);
-	return;
+	send_lock_message(lock, LOCK_AC_LOCK);
+	if (lock->is_gathering())
+	  return;
       }
 
       if (lock->is_dirty() && !lock->is_flushed()) {
@@ -4945,8 +4995,8 @@ bool Locker::simple_sync(SimpleLock *lock, bool *need_issue)
     
     if (lock->get_parent()->is_replicated() && old_state == LOCK_MIX) {
       send_lock_message(lock, LOCK_AC_SYNC);
-      lock->init_gather();
-      gather++;
+      if (lock->is_gathering())
+	gather++;
     }
     
     if (in && in->is_head()) {
@@ -5025,11 +5075,10 @@ void Locker::simple_excl(SimpleLock *lock, bool *need_issue)
     invalidate_lock_caches(lock);
 
   if (lock->get_parent()->is_replicated() && 
-      lock->get_state() != LOCK_LOCK_EXCL &&
-      lock->get_state() != LOCK_XSYN_EXCL) {
+      lock->get_state() == LOCK_SYNC_EXCL) {
     send_lock_message(lock, LOCK_AC_LOCK);
-    lock->init_gather();
-    gather++;
+    if (lock->is_gathering())
+      gather++;
   }
   
   if (in && in->is_head()) {
@@ -5121,9 +5170,9 @@ void Locker::simple_lock(SimpleLock *lock, bool *need_issue)
 
     if (lock->get_parent()->is_replicated() &&
 	lock->get_sm()->states[old_state].replica_state != LOCK_LOCK) {  // replica may already be LOCK
-      gather++;
       send_lock_message(lock, LOCK_AC_LOCK);
-      lock->init_gather();
+      if (lock->is_gathering())
+	gather++;
     }
   }
 
@@ -5358,6 +5407,34 @@ void Locker::scatter_eval(ScatterLock *lock, bool *need_issue)
   }
 }
 
+void Locker::scatter_unlazy(ScatterLock *lock, mds_rank_t target)
+{
+  CInode *in = static_cast<CInode*>(lock->get_parent());
+  dout(12) << __func__ << " " << *lock << " on " << *in << dendl;
+  if (in->is_auth()) {
+    if (lock->get_state() != LOCK_MIX)
+      return;
+    if (in->is_freezing_or_frozen())
+      return;
+    if (lock->remove_lazy_scatter(target)) {
+      bufferlist softdata;
+      lock->encode_locked_state(softdata);
+      auto m = make_message<MLock>(lock, LOCK_AC_MIX, mds->get_nodeid());
+      m->set_data(softdata);
+      mds->send_message_mds(m, target);
+    }
+  } else {
+    if (lock->get_state() != LOCK_LOCK)
+      return;
+    if (in->is_ambiguous_auth())
+      return;
+    mds_rank_t auth = in->authority().first;
+    if (!mds->is_cluster_degraded() ||
+	mds->mdsmap->is_clientreplay_or_active_or_stopping(auth)) {
+      mds->send_message_mds(make_message<MLock>(lock, LOCK_AC_UNLAZY, mds->get_nodeid()), auth);
+    }
+  }
+}
 
 /*
  * mark a scatterlock to indicate that the dir fnode has some dirty data
@@ -5389,7 +5466,7 @@ void Locker::scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchang
 {
   CInode *p = static_cast<CInode *>(lock->get_parent());
 
-  if (p->is_frozen() || p->is_freezing()) {
+  if (p->is_freezing_or_frozen()) {
     dout(10) << "scatter_nudge waiting for unfreeze on " << *p << dendl;
     if (c) 
       p->add_waiter(MDSCacheObject::WAIT_UNFREEZE, c);
@@ -5559,9 +5636,9 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
 
   if (lock->get_state() == LOCK_MIX_TSYN &&
       in->is_replicated()) {
-    lock->init_gather();
     send_lock_message(lock, LOCK_AC_LOCK);
-    gather++;
+    if (lock->is_gathering())
+      gather++;
   }
 
   if (lock->get_type() == CEPH_LOCK_IFILE) {
@@ -5846,8 +5923,8 @@ void Locker::scatter_mix(ScatterLock *lock, bool *need_issue)
     if (in->is_replicated()) {
       if (lock->get_state() == LOCK_SYNC_MIX) { // for the rest states, replicas are already LOCK
 	send_lock_message(lock, LOCK_AC_MIX);
-	lock->init_gather();
-	gather++;
+	if (lock->is_gathering())
+	  gather++;
       }
     }
     if (lock->is_leased()) {
@@ -5876,13 +5953,13 @@ void Locker::scatter_mix(ScatterLock *lock, bool *need_issue)
 	mds->mdcache->do_file_recover();
     } else {
       in->start_scatter(lock);
-      lock->set_state(LOCK_MIX);
-      lock->clear_scatter_wanted();
       if (in->is_replicated()) {
 	bufferlist softdata;
 	lock->encode_locked_state(softdata);
 	send_lock_message(lock, LOCK_AC_MIX, softdata);
       }
+      lock->set_state(LOCK_MIX);
+      lock->clear_scatter_wanted();
       if (lock->get_cap_shift()) {
 	if (need_issue)
 	  *need_issue = true;
@@ -5926,8 +6003,8 @@ void Locker::file_excl(ScatterLock *lock, bool *need_issue)
   if (in->is_replicated() &&
       lock->get_sm()->states[old_state].replica_state != LOCK_LOCK) {
     send_lock_message(lock, LOCK_AC_LOCK);
-    lock->init_gather();
-    gather++;
+    if (lock->is_gathering())
+      gather++;
   }
   if (lock->is_leased()) {
     revoke_client_leases(lock);
@@ -6016,7 +6093,6 @@ void Locker::file_recover(ScatterLock *lock)
   if (in->is_replicated()
       lock->get_sm()->states[oldstate].replica_state != LOCK_LOCK) {
     send_lock_message(lock, LOCK_AC_LOCK);
-    lock->init_gather();
     gather++;
   }
   */
@@ -6110,6 +6186,11 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
     // wake up scatter_nudge waiters
     if (lock->is_stable())
       lock->finish_waiters(SimpleLock::WAIT_STABLE);
+    break;
+
+  case LOCK_AC_MIXSYNC:
+    ceph_assert(lock->get_state() == LOCK_LOCK);
+    lock->set_state(LOCK_MIX_SYNC2);
     break;
     
   case LOCK_AC_MIX:
@@ -6206,6 +6287,11 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
 
 
     // requests....
+  case LOCK_AC_UNLAZY:
+    if (in->is_auth())
+      scatter_unlazy(lock, from);
+    break;
+
   case LOCK_AC_REQSCATTER:
     if (lock->is_stable()) {
       /* NOTE: we can do this _even_ if !can_auth_pin (i.e. freezing)
@@ -6215,8 +6301,18 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
        */
       dout(7) << "handle_file_lock got scatter request on " << *lock
 	      << " on " << *lock->get_parent() << dendl;
-      if (lock->get_state() != LOCK_MIX)  // i.e., the reqscatter didn't race with an actual mix/scatter
+      if (lock->get_state() == LOCK_MIX) {
+	if (static_cast<ScatterLock *>(lock)->remove_lazy_scatter(from)) {
+	  bufferlist softdata;
+	  lock->encode_locked_state(softdata);
+	  auto m = make_message<MLock>(lock, LOCK_AC_MIX, mds->get_nodeid());
+	  m->set_data(softdata);
+	  mds->send_message_mds(m, from);
+	}
+      } else {
+	// i.e., the reqscatter didn't race with an actual mix/scatter
 	scatter_mix(lock);
+      }
     } else {
       dout(7) << "handle_file_lock got scatter request, !stable, marking scatter_wanted on " << *lock
 	      << " on " << *lock->get_parent() << dendl;

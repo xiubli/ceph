@@ -144,6 +144,7 @@ public:
 
    // scatter
   void scatter_eval(ScatterLock *lock, bool *need_issue);        // public for MDCache::adjust_subtree_auth()
+  void scatter_unlazy(ScatterLock *lock, mds_rank_t target=MDS_RANK_NONE);
 
   void scatter_tick();
   void scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchange=false);
@@ -213,8 +214,7 @@ public:
   void encode_lease(bufferlist& bl, const session_info_t& info, const LeaseStat& ls);
 
 protected:
-  void send_lock_message(SimpleLock *lock, int msg);
-  void send_lock_message(SimpleLock *lock, int msg, const bufferlist &data);
+  void send_lock_message(SimpleLock *lock, int msg, const bufferlist &data={});
 
   // -- locks --
   void _drop_locks(MutationImpl *mut, std::set<CInode*> *pneed_issue, bool drop_rdlocks);

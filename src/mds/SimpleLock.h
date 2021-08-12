@@ -168,6 +168,7 @@ public:
       case LOCK_AC_MIX: return "mix";
       case LOCK_AC_LOCK: return "lock";
       case LOCK_AC_LOCKFLUSHED: return "lockflushed";
+      case LOCK_AC_MIXSYNC: return "mixsync";
 
       case LOCK_AC_SYNCACK: return "syncack";
       case LOCK_AC_MIXACK: return "mixack";
@@ -177,6 +178,7 @@ public:
       case LOCK_AC_REQUNSCATTER: return "requnscatter";
       case LOCK_AC_NUDGE: return "nudge";
       case LOCK_AC_REQRDLOCK: return "reqrdlock";
+      case LOCK_AC_UNLAZY: return "unlazy";
       default: return "???";
     }
   }
@@ -338,6 +340,9 @@ public:
     if (have_more())
       more()->gather_set.clear();
   }
+  void add_gather(int32_t i) {
+    more()->gather_set.insert(i);
+  }
   void remove_gather(int32_t i) {
     if (have_more())
       more()->gather_set.erase(i);
@@ -476,23 +481,21 @@ public:
 
   // encode/decode
   void encode(ceph::buffer::list& bl) const {
-    ENCODE_START(2, 2, bl);
+    using ceph::encode;
     encode(state, bl);
     if (have_more())
       encode(more()->gather_set, bl);
     else
       encode(empty_gather_set, bl);
-    ENCODE_FINISH(bl);
   }
   
   void decode(ceph::buffer::list::const_iterator& p) {
-    DECODE_START(2, p);
+    using ceph::decode;
     decode(state, p);
     std::set<__s32> g;
     decode(g, p);
     if (!g.empty())
       more()->gather_set.swap(g);
-    DECODE_FINISH(p);
   }
   void encode_state_for_replica(ceph::buffer::list& bl) const {
     __s16 s = get_replica_state();
@@ -610,7 +613,7 @@ private:
     unstable_bits_t();
     ~unstable_bits_t() noexcept;
 
-    bool empty() {
+    bool empty() const {
       return
 	gather_set.empty() &&
 	num_wrlock == 0 &&
