@@ -260,6 +260,9 @@ public:
   bool aborted = false;
   bool killed = false;
 
+  bool fscrypt_verifing_objver = false;
+  uint64_t objver = 0;
+
   // for applying projected inode changes
   std::set<MDSCacheObject*> projected_nodes;
   std::list<ScatterLock*> updated_locks;

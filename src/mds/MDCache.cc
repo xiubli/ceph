@@ -63,6 +63,7 @@
 #include "events/ESessions.h"
 
 #include "InoTable.h"
+#include "fscrypt.h"
 
 #include "common/Timer.h"
 
@@ -100,27 +101,6 @@ protected:
   }
 public:
   explicit MDCacheContext(MDCache *mdc_) : mdcache(mdc_) {}
-};
-
-
-/**
- * Only for contexts called back from an I/O completion
- *
- * Note: duplication of members wrt MDCacheContext, because
- * it'ls the lesser of two evils compared with introducing
- * yet another piece of (multiple) inheritance.
- */
-class MDCacheIOContext : public virtual MDSIOContextBase {
-protected:
-  MDCache *mdcache;
-  MDSRank *get_mds() override
-  {
-    ceph_assert(mdcache != NULL);
-    return mdcache->mds;
-  }
-public:
-  explicit MDCacheIOContext(MDCache *mdc_, bool track=true) :
-    MDSIOContextBase(track), mdcache(mdc_) {}
 };
 
 class MDCacheLogContext : public virtual MDSLogContextBase {
@@ -6455,7 +6435,9 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
   ceph_assert(pi->is_truncating());
   ceph_assert(pi->truncate_size < (1ULL << 63));
   ceph_assert(pi->truncate_from < (1ULL << 63));
-  ceph_assert(pi->truncate_size < pi->truncate_from);
+  ceph_assert(pi->truncate_size < pi->truncate_from ||
+              (pi->truncate_size == pi->truncate_from &&
+	       pi->fscrypt_last_block.length()));
 
 
   SnapRealm *realm = in->find_snaprealm();
@@ -6469,13 +6451,59 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
     snapc = &nullsnap;
     ceph_assert(in->last == CEPH_NOSNAP);
   }
-  dout(10) << "_truncate_inode  snapc " << snapc << " on " << *in << dendl;
+  dout(10) << "_truncate_inode  snapc " << snapc << " on " << *in
+           << " fscrypt_last_block length is " << pi->fscrypt_last_block.length()
+           << dendl;
   auto layout = pi->layout;
-  filer.truncate(in->ino(), &layout, *snapc,
-		 pi->truncate_size, pi->truncate_from-pi->truncate_size,
-		 pi->truncate_seq, ceph::real_time::min(), 0,
-		 new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
-				  mds->finisher));
+  struct ceph_fscrypt_last_block_header header;
+  memset(&header, 0, sizeof(header));
+  bufferlist data;
+  if (pi->fscrypt_last_block.length()) {
+    auto bl = pi->fscrypt_last_block.cbegin();
+    DECODE_START(1, bl);
+    decode(header.objver, bl);
+    decode(header.file_offset, bl);
+    decode(header.block_size, bl);
+    bl.copy(header.block_size, data);
+    DECODE_FINISH(bl);
+  }
+
+  /*
+   * If the block_size is 0, that means the fscrypt_last_block is empty
+   * or there has no data need to write in fscrypt_last_block, which
+   * means the truncate size is located in the file hole.
+   */
+  if (header.block_size) {
+    dout(10) << "_truncate_inode write_trunc on inode " << *in << " objver: "
+             << header.objver << " offset: " << header.file_offset << " blen: "
+	     << header.block_size << dendl;
+    /*
+     * When the Rados receives a write_trunc() request, if the new truncate seq
+     * is larger than current one in Rados, it will assume a write request comes
+     * before the truncate request, and it will do the truncate first and then
+     * write the new data to it.
+     *
+     * Since the offset + blen should always equal to pi->truncate_size, so in
+     * Rados the new writing data end won't exceed the truncated size it just did.
+     *
+     * So the write_trunc() is enough, no need to do the extra filer.truncate().
+     */
+    dout(10) << "_truncate_inode write_trunc on inode " << *in << " objver: "
+             << header.objver << " offset: " << header.file_offset << " blen: "
+	     << header.block_size << dendl;
+    filer.write_trunc(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
+                      data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq,
+                      new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
+                                       mds->finisher));
+  } else {
+    dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
+    filer.truncate(in->ino(), &layout, *snapc,
+                   pi->truncate_size, pi->truncate_from-pi->truncate_size,
+                   pi->truncate_seq, ceph::real_time::min(), 0,
+                   new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
+                                    mds->finisher));
+  }
+
 }
 
 struct C_MDC_TruncateLogged : public MDCacheLogContext {
