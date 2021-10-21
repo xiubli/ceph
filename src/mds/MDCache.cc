@@ -6475,24 +6475,21 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
 	   << " fscrypt_last_block length is " << pi->fscrypt_last_block.length()
 	   << dendl;
   auto layout = pi->layout;
-  uint64_t offset;
-  uint64_t blen = 0;
+  struct ceph_fscrypt_last_block_header header;
+  memset(&header, 0, sizeof(header));
   bufferlist data;
   if (pi->fscrypt_last_block.length()) {
     auto bl = pi->fscrypt_last_block.cbegin();
-    DECODE_START(1, bl);
-    decode(offset, bl);
-    decode(blen, bl);
-    bl.copy(blen, data);
-    DECODE_FINISH(bl);
+    decode(header, bl);
+    bl.copy(header.block_size, data);
   }
 
   /*
-   * If the blen is 0, that means the fscrypt_last_block is empty
+   * If the block_size is 0, that means the fscrypt_last_block is empty
    * or there has no data need to write in fscrypt_last_block, which
    * means the truncate size is located in the file hole.
    */
-  if (blen) {
+  if (header.block_size) {
     /*
      * When the Rados receives a write_trunc() request, if the new truncate seq
      * is larger than current one in Rados, it will assume a write request comes
@@ -6504,10 +6501,11 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
      *
      * So the write_trunc() is enough, no need to do the extra filer.truncate().
      */
-    dout(10) << "_truncate_inode write_trunc on inode " << *in << " offset: "
-	     << offset << " blen: " << blen << dendl;
-    filer.write_trunc(in->ino(), &layout, *snapc, offset, blen, data,
-                      ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq,
+    dout(10) << "_truncate_inode write_trunc on inode " << *in << " assert_ver: "
+             << header.assert_ver << " offset: " << header.file_offset << " blen: "
+	     << header.block_size << dendl;
+    filer.write_trunc(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
+                      data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq,
                       new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
                                        mds->finisher));
   } else {
