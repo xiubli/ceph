@@ -704,7 +704,8 @@ void Locker::cancel_locking(MutationImpl *mut, set<CInode*> *pneed_issue)
     bool need_issue = false;
     if (lock->get_state() == LOCK_PREXLOCK) {
       _finish_xlock(lock, -1, &need_issue);
-    } else if (lock->get_state() == LOCK_LOCK_XLOCK) {
+    } else if (lock->get_state() == LOCK_LOCK_XLOCK ||
+               lock->get_state() == LOCK_LOCK_XLOCK2) {
       lock->set_state(LOCK_XLOCKDONE);
       eval_gather(lock, true, &need_issue);
     }
@@ -1909,9 +1910,10 @@ bool Locker::xlock_start(SimpleLock *lock, MDRequestRef& mut)
   if (lock->get_parent()->is_auth()) {
     // auth
     while (1) {
+      int state = lock->get_state();
       if (mut->locking && // started xlock (not preempt other request)
 	  lock->can_xlock(client) &&
-	  !(lock->get_state() == LOCK_LOCK_XLOCK &&	// client is not xlocker or
+	  !((state == LOCK_LOCK_XLOCK || state == LOCK_LOCK_XLOCK2) &&	// client is not xlocker or
 	    in && in->issued_caps_need_gather(lock))) { // xlocker does not hold shared cap
 	lock->set_state(LOCK_XLOCK);
 	lock->get_xlock(mut, client);
@@ -1932,7 +1934,8 @@ bool Locker::xlock_start(SimpleLock *lock, MDRequestRef& mut)
 
       if (lock->get_state() == LOCK_LOCK || lock->get_state() == LOCK_XLOCKDONE) {
 	mut->start_locking(lock);
-	simple_xlock(lock);
+	bool xlock2 = lock->get_sm() == &sm_filelock ? mut->fscrypt_truncating_smaller : false;
+	simple_xlock(lock, xlock2);
       } else {
 	simple_lock(lock);
       }
@@ -2046,7 +2049,8 @@ void Locker::xlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *m
 			 SimpleLock::WAIT_RD, 0); 
   } else {
     if (lock->get_num_xlocks() == 0 &&
-        lock->get_state() != LOCK_LOCK_XLOCK) { // no one is taking xlock
+        (lock->get_state() != LOCK_LOCK_XLOCK &&
+         lock->get_state() != LOCK_LOCK_XLOCK2)) { // no one is taking xlock
       _finish_xlock(lock, xlocker, &do_issue);
     }
   }
@@ -4847,7 +4851,7 @@ void Locker::simple_lock(SimpleLock *lock, bool *need_issue)
 }
 
 
-void Locker::simple_xlock(SimpleLock *lock)
+void Locker::simple_xlock(SimpleLock *lock, bool xlock2)
 {
   dout(7) << "simple_xlock on " << *lock << " on " << *lock->get_parent() << dendl;
   ceph_assert(lock->get_parent()->is_auth());
@@ -4862,8 +4866,13 @@ void Locker::simple_xlock(SimpleLock *lock)
     lock->get_parent()->auth_pin(lock);
 
   switch (lock->get_state()) {
-  case LOCK_LOCK: 
-  case LOCK_XLOCKDONE: lock->set_state(LOCK_LOCK_XLOCK); break;
+  case LOCK_LOCK:
+  case LOCK_XLOCKDONE:
+    if (xlock2) {
+      lock->set_state(LOCK_LOCK_XLOCK2); break;
+    } else {
+      lock->set_state(LOCK_LOCK_XLOCK); break;
+    }
   default: ceph_abort();
   }
 
