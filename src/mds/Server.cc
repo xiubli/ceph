@@ -50,6 +50,7 @@
 #include "common/perf_counters.h"
 #include "include/compat.h"
 #include "osd/OSDMap.h"
+#include "fscrypt.h"
 
 #include <errno.h>
 
@@ -5080,6 +5081,10 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
 
     truncating_smaller = req->head.args.setattr.size < old_size ||
 	(req->head.args.setattr.size == old_size && req->get_data().length());
+    if (truncating_smaller &&
+        req->get_data().length() > sizeof(struct ceph_fscrypt_last_block_header) - 6) {
+	mdr->no_early_reply = true;
+    }
     if (truncating_smaller && pip->is_truncating()) {
       dout(10) << " waiting for pending truncate from " << pip->truncate_from
 	       << " to " << pip->truncate_size << " to complete on " << *cur << dendl;
@@ -5160,8 +5165,9 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
 								   truncating_smaller, changed_ranges));
 
   // flush immediately if there are readers/writers waiting
-  if (mdr->is_xlocked(&cur->filelock) &&
-      (cur->get_caps_wanted() & (CEPH_CAP_FILE_RD|CEPH_CAP_FILE_WR)))
+  if ((mdr->is_xlocked(&cur->filelock) &&
+      (cur->get_caps_wanted() & (CEPH_CAP_FILE_RD|CEPH_CAP_FILE_WR))) ||
+      mdr->no_early_reply)
     mds->mdlog->flush();
 }
 

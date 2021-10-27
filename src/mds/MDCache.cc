@@ -63,6 +63,7 @@
 #include "events/ESessions.h"
 
 #include "InoTable.h"
+#include "fscrypt.h"
 
 #include "common/Timer.h"
 
@@ -6437,7 +6438,9 @@ struct C_IO_MDC_TruncateFinish : public MDCacheIOContext {
     MDCacheIOContext(c, false), in(i), ls(l) {
   }
   void finish(int r) override {
-    ceph_assert(r == 0 || r == -CEPHFS_ENOENT);
+    ceph_assert(r == 0 || r == -CEPHFS_ENOENT || r == -EOVERFLOW);
+    if (r == -EOVERFLOW) {
+    }
     mdcache->truncate_inode_finish(in, ls);
   }
   void print(ostream& out) const override {
@@ -6480,8 +6483,12 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
   bufferlist data;
   if (pi->fscrypt_last_block.length()) {
     auto bl = pi->fscrypt_last_block.cbegin();
-    decode(header, bl);
+    DECODE_START(1, bl);
+    decode(header.assert_ver, bl);
+    decode(header.file_offset, bl);
+    decode(header.block_size, bl);
     bl.copy(header.block_size, data);
+    DECODE_FINISH(bl);
   }
 
   /*
@@ -6490,6 +6497,9 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
    * means the truncate size is located in the file hole.
    */
   if (header.block_size) {
+    dout(10) << "_truncate_inode write_trunc on inode " << *in << " assert_ver: "
+             << header.assert_ver << " offset: " << header.file_offset << " blen: "
+	     << header.block_size << dendl;
     /*
      * When the Rados receives a write_trunc() request, if the new truncate seq
      * is larger than current one in Rados, it will assume a write request comes
@@ -6500,14 +6510,27 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
      * Rados the new writing data end won't exceed the truncated size it just did.
      *
      * So the write_trunc() is enough, no need to do the extra filer.truncate().
+     *
+     * For now just assume the whole fscrypt block range is located in one object.
      */
-    dout(10) << "_truncate_inode write_trunc on inode " << *in << " assert_ver: "
-             << header.assert_ver << " offset: " << header.file_offset << " blen: "
-	     << header.block_size << dendl;
+#if 1
+    ObjectOperation extra_op;
+    extra_op.assert_version(header.assert_ver);
+    std::vector<ObjectExtent> extents;
+    Striper::file_to_extents(g_ceph_context, in->ino(), &layout, header.file_offset,
+                             header.block_size, pi->truncate_size, extents);
+    mds->objecter->write_trunc(extents[0].oid, object_locator_t(layout.pool_id), header.file_offset,
+                               header.block_size, *snapc, data, ceph::real_time::min(), 0,
+                               pi->truncate_size, pi->truncate_seq,
+                               new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
+                                                mds->finisher),
+                               0, &extra_op, 0);
+#else
     filer.write_trunc(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
                       data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq,
                       new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
                                        mds->finisher));
+#endif
   } else {
     dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
     filer.truncate(in->ino(), &layout, *snapc,
