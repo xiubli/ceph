@@ -5064,6 +5064,18 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
     }
   }
 
+  if (mask & CEPH_SETATTR_SIZE) {
+    if (req->get_data().length() >
+        sizeof(struct ceph_fscrypt_last_block_header) + fscrypt_last_block_max_size) {
+      dout(10) << __func__ << ": the last block size is too large" << dendl;
+      respond_to_request(mdr, -CEPHFS_EINVAL);
+      return;
+    }
+    if (req->get_data().length() > sizeof(struct ceph_fscrypt_last_block_header)) {
+      mdr->fscrypt_truncating_smaller = true;
+    }
+  }
+
   // xlock inode
   if (mask & (CEPH_SETATTR_MODE|CEPH_SETATTR_UID|CEPH_SETATTR_GID|CEPH_SETATTR_BTIME|CEPH_SETATTR_KILL_SGUID|CEPH_SETATTR_FSCRYPT_AUTH))
     lov.add_xlock(&cur->authlock);
@@ -5100,18 +5112,11 @@ xlock_done:
 
   bool truncating_smaller = false;
   if (mask & CEPH_SETATTR_SIZE) {
-    if (req->get_data().length() >
-        sizeof(struct ceph_fscrypt_last_block_header) + fscrypt_last_block_max_size) {
-      dout(10) << __func__ << ": the last block size is too large" << dendl;
-      respond_to_request(mdr, -CEPHFS_EINVAL);
-      return;
-    }
-
     truncating_smaller = req->head.args.setattr.size < old_size ||
 	(req->head.args.setattr.size == old_size && req->get_data().length());
     if (truncating_smaller && pip->is_truncating()) {
       dout(10) << " waiting for pending truncate from " << pip->truncate_from
-	       << " to " << pip->truncate_size << " to complete on " << *cur << dendl;
+               << " to " << pip->truncate_size << " to complete on " << *cur << dendl;
       mds->locker->drop_locks(mdr.get());
       mdr->drop_local_auth_pins();
       cur->add_waiter(CInode::WAIT_TRUNC, new C_MDS_RetryRequest(mdcache, mdr));

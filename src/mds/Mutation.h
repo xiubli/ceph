@@ -262,6 +262,7 @@ public:
 
   bool fscrypt_verifing_objver = false;
   uint64_t objver = 0;
+  bool fscrypt_truncating_smaller = false;
 
   // for applying projected inode changes
   std::set<MDSCacheObject*> projected_nodes;

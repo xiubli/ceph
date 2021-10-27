@@ -54,6 +54,7 @@ enum {
   LOCK_XLOCKDONE,   // A    r p rd l x / . .   (lock)  <-- by same client only!!
   LOCK_XLOCKSNAP,   // also revoke Fb
   LOCK_LOCK_XLOCK,
+  LOCK_LOCK_XLOCK2, // for fscrypt truncate smaller size
 
   LOCK_SYNC_LOCK,    // AR   R . .. . . / . .   R .. . . / . .
   LOCK_LOCK_SYNC,    // A    R p rd l . / . .   (lock)  <-- lc by same client only

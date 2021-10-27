@@ -92,6 +92,7 @@ public:
     case LOCK_XLOCKDONE: return "xlockdone";
     case LOCK_XLOCKSNAP: return "xlocksnap";
     case LOCK_LOCK_XLOCK: return "lock->xlock";
+    case LOCK_LOCK_XLOCK2: return "lock->xlock2";
 
     case LOCK_SYNC_LOCK: return "sync->lock";
     case LOCK_LOCK_SYNC: return "lock->sync";
@@ -415,6 +416,7 @@ public:
   void put_xlock() {
     ceph_assert(state == LOCK_XLOCK || state == LOCK_XLOCKDONE ||
 	   state == LOCK_XLOCKSNAP || state == LOCK_LOCK_XLOCK ||
+	   state == LOCK_LOCK_XLOCK2 ||
 	   state == LOCK_LOCK  || /* if we are a leader of a peer */
 	   is_locallock());
     --more()->num_xlock;

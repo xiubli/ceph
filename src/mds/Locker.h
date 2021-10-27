@@ -201,7 +201,7 @@ protected:
 
   void simple_lock(SimpleLock *lock, bool *need_issue=0);
   void simple_excl(SimpleLock *lock, bool *need_issue=0);
-  void simple_xlock(SimpleLock *lock);
+  void simple_xlock(SimpleLock *lock, bool xlock2=false);
 
   void handle_scatter_lock(ScatterLock *lock, const cref_t<MLock> &m);
   bool scatter_scatter_fastpath(ScatterLock *lock);
