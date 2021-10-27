@@ -261,6 +261,8 @@ public:
   bool killed = false;
 
   bool fscrypt_truncating_smaller = false;
+  bool fscrypt_verifing_assert_ver = false;
+  uint64_t assert_ver = 0;
 
   // for applying projected inode changes
   std::set<MDSCacheObject*> projected_nodes;

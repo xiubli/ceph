@@ -6483,11 +6483,17 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
   bufferlist data;
   if (pi->fscrypt_last_block.length()) {
     auto bl = pi->fscrypt_last_block.cbegin();
+    dout(0) << "lxb---------------1" << dendl;
     DECODE_START(1, bl);
+    dout(0) << "lxb---------------2" << dendl;
     decode(header.assert_ver, bl);
+    dout(0) << "lxb---------------3 header.assert_ver:" << header.assert_ver << dendl;
     decode(header.file_offset, bl);
+    dout(0) << "lxb---------------4 header.file_offset:" << header.file_offset << dendl;
     decode(header.block_size, bl);
+    dout(0) << "lxb---------------5 header.block_size:" << header.block_size << dendl;
     bl.copy(header.block_size, data);
+    dout(0) << "lxb---------------6" << dendl;
     DECODE_FINISH(bl);
   }
 

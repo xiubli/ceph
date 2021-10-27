@@ -5024,6 +5024,9 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
   __u32 mask = req->head.args.setattr.mask;
   __u32 access_mask = MAY_WRITE;
 
+  if (mdr->fscrypt_verifing_assert_ver)
+    goto xlock_done;
+
   if (req->get_header().version < 6) {
     // No changes to fscrypted inodes by downrevved clients
     if (!cur->get_inode()->fscrypt_auth.empty()) {
@@ -5061,6 +5064,8 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
   if (!mds->locker->acquire_locks(mdr, lov))
     return;
 
+xlock_done:
+
   if ((mask & CEPH_SETATTR_UID) && (cur->get_inode()->uid != req->head.args.setattr.uid))
     access_mask |= MAY_CHOWN;
 
@@ -5096,6 +5101,41 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
       mds->locker->drop_locks(mdr.get());
       mdr->drop_local_auth_pins();
       cur->add_waiter(CInode::WAIT_TRUNC, new C_MDS_RetryRequest(mdcache, mdr));
+      return;
+    }
+
+    if (truncating_smaller && req->get_data().length()) {
+      struct ceph_fscrypt_last_block_header header;
+      memset(&header, 0, sizeof(header));
+      auto bl = req->get_data().cbegin();
+      bufferlist data;
+      DECODE_START(1, bl);
+      decode(header.assert_ver, bl);
+      dout(0) << "lxb---------------3 header.assert_ver:" << header.assert_ver << dendl;
+      decode(header.file_offset, bl);
+      dout(0) << "lxb---------------4 header.file_offset:" << header.file_offset << dendl;
+      decode(header.block_size, bl);
+      dout(0) << "lxb---------------5 header.block_size:" << header.block_size << dendl;
+      DECODE_FINISH(bl);
+
+      dout(0) << "lxb---------------3 objver:" << mdr->assert_ver << dendl;
+      if (mdr->assert_ver && mdr->assert_ver != header.assert_ver) {
+        dout(0) << __func__ << ": header.assert_ver:" << header.assert_ver
+                 << " != current objver:" << mdr->assert_ver
+                 << ", let client retry it!" << dendl;
+        respond_to_request(mdr, -CEPHFS_EAGAIN);
+      }
+
+      auto layout = pip->layout;
+      std::vector<ObjectExtent> extents;
+      Striper::file_to_extents(g_ceph_context, cur->ino(), &layout, header.file_offset,
+                               header.block_size, pip->truncate_size, extents);
+      mds->objecter->read_trunc(extents[0].oid, object_locator_t(layout.pool_id),
+                                header.file_offset, (uint64_t)8, mdr->snapid, &data, 0,
+				(uint64_t)0, (__u32)0,
+                                new C_OnFinisher(new C_MDS_RetryRequest(mdcache, mdr),
+                                                 mds->finisher),
+                                &mdr->assert_ver);
       return;
     }
   }
