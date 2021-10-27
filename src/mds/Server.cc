@@ -5005,6 +5005,25 @@ void Server::handle_client_file_readlock(MDRequestRef& mdr)
   respond_to_request(mdr, 0);
 }
 
+struct C_IO_MDC_ReadtruncFinish : public MDCacheIOContext {
+  CInode *in;
+  MDRequestRef mdr;
+  bufferlist *data;
+
+  C_IO_MDC_ReadtruncFinish(MDCache *c, CInode *i, MDRequestRef& m, bufferlist *d) :
+    MDCacheIOContext(c, false), in(i), mdr(m), data(d) {
+  }
+  void finish(int r) override {
+    ceph_assert(r == 0 || r == -CEPHFS_ENOENT);
+    mdr->retry++;
+    delete data;
+    mdcache->dispatch_request(mdr);
+  }
+  void print(ostream& out) const override {
+    out << "read_trunc(" << in->ino() << ")";
+  }
+};
+
 void Server::handle_client_setattr(MDRequestRef& mdr)
 {
   const cref_t<MClientRequest> &req = mdr->client_request;
@@ -5108,7 +5127,7 @@ xlock_done:
       struct ceph_fscrypt_last_block_header header;
       memset(&header, 0, sizeof(header));
       auto bl = req->get_data().cbegin();
-      bufferlist data;
+      bufferlist *data = new bufferlist();
       DECODE_START(1, bl);
       decode(header.assert_ver, bl);
       dout(0) << "lxb---------------3 header.assert_ver:" << header.assert_ver << dendl;
@@ -5119,24 +5138,27 @@ xlock_done:
       DECODE_FINISH(bl);
 
       dout(0) << "lxb---------------3 objver:" << mdr->assert_ver << dendl;
-      if (mdr->assert_ver && mdr->assert_ver != header.assert_ver) {
-        dout(0) << __func__ << ": header.assert_ver:" << header.assert_ver
-                 << " != current objver:" << mdr->assert_ver
-                 << ", let client retry it!" << dendl;
-        respond_to_request(mdr, -CEPHFS_EAGAIN);
+      if (mdr->assert_ver) {
+        if (mdr->assert_ver != header.assert_ver) {
+          dout(0) << __func__ << ": header.assert_ver:" << header.assert_ver
+                   << " != current objver:" << mdr->assert_ver
+                   << ", let client retry it!" << dendl;
+          respond_to_request(mdr, -CEPHFS_EAGAIN);
+	  return;
+        }
+      } else {
+        auto layout = pip->layout;
+        std::vector<ObjectExtent> extents;
+        Striper::file_to_extents(g_ceph_context, cur->ino(), &layout, header.file_offset,
+                                 header.block_size, pip->truncate_size, extents);
+        mds->objecter->read_trunc(extents[0].oid, object_locator_t(layout.pool_id),
+                                  header.file_offset, (uint64_t)8, mdr->snapid, data, 0,
+                                  (uint64_t)0, (__u32)0,
+                                  new C_OnFinisher(new C_IO_MDC_ReadtruncFinish(mdcache, cur, mdr, data),
+                                                   mds->finisher),
+                                  &mdr->assert_ver);
+        return;
       }
-
-      auto layout = pip->layout;
-      std::vector<ObjectExtent> extents;
-      Striper::file_to_extents(g_ceph_context, cur->ino(), &layout, header.file_offset,
-                               header.block_size, pip->truncate_size, extents);
-      mds->objecter->read_trunc(extents[0].oid, object_locator_t(layout.pool_id),
-                                header.file_offset, (uint64_t)8, mdr->snapid, &data, 0,
-				(uint64_t)0, (__u32)0,
-                                new C_OnFinisher(new C_MDS_RetryRequest(mdcache, mdr),
-                                                 mds->finisher),
-                                &mdr->assert_ver);
-      return;
     }
   }
 
