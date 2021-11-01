@@ -6945,23 +6945,32 @@ int Client::walk(std::string_view path, walk_dentry_result* wdr, const UserPerm&
 }
 
 int Client::path_walk(const filepath& origpath, InodeRef *end,
-		      const UserPerm& perms, bool followsym, int mask, InodeRef dirinode)
+		      const UserPerm& perms, bool followsym, int mask,
+                      std::optional<int> dirfd)
 {
   walk_dentry_result wdr;
-  int rc = path_walk(origpath, &wdr, perms, followsym, mask, dirinode);
+  int rc = path_walk(origpath, &wdr, perms, followsym, mask, dirfd);
   *end = std::move(wdr.in);
   return rc;
 }
 
 int Client::path_walk(const filepath& origpath, walk_dentry_result* result, const UserPerm& perms,
-                      bool followsym, int mask, InodeRef dirinode)
+                      bool followsym, int mask, std::optional<int> dirfd)
 {
   filepath path = origpath;
-  InodeRef cur;
+  InodeRef cur, dirinode;
   std::string alternate_name;
+
+  if (dirfd) {
+    int r = get_fd_inode(dirfd.value(), &dirinode);
+    if (r < 0) {
+      return r;
+    }
+  }
+
   if (origpath.absolute())
     cur = root;
-  else if (!dirinode)
+  else if (!dirfd)
     cur = cwd;
   else {
     cur = dirinode;
@@ -7117,14 +7126,7 @@ int Client::unlinkat(int dirfd, const char *relpath, int flags, const UserPerm& 
   InodeRef dir;
 
   std::scoped_lock lock(client_lock);
-
-  InodeRef dirinode;
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
-  r = path_walk(path, &dir, perm, true, 0, dirinode);
+  int r = path_walk(path, &dir, perm, true, 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -7215,14 +7217,7 @@ int Client::mkdirat(int dirfd, const char *relpath, mode_t mode, const UserPerm&
   InodeRef dir;
 
   std::scoped_lock lock(client_lock);
-
-  InodeRef dirinode;
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
-  r = path_walk(path, &dir, perm, true, 0, dirinode);
+  int r = path_walk(path, &dir, perm, true, 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -7358,13 +7353,7 @@ int Client::symlinkat(const char *target, int dirfd, const char *relpath, const 
   InodeRef dir;
 
   std::scoped_lock lock(client_lock);
-
-  InodeRef dirinode;
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-  r = path_walk(path, &dir, perms, true, 0, dirinode);
+  int r = path_walk(path, &dir, perms, true, 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -7392,16 +7381,10 @@ int Client::readlinkat(int dirfd, const char *relpath, char *buf, loff_t size, c
   tout(cct) << dirfd << std::endl;
   tout(cct) << relpath << std::endl;
 
-  InodeRef dirinode;
   std::scoped_lock lock(client_lock);
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
   InodeRef in;
   filepath path(relpath);
-  r = path_walk(path, &in, perms, false, 0, dirinode);
+  int r = path_walk(path, &in, perms, false, 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -8070,15 +8053,9 @@ int Client::chmodat(int dirfd, const char *relpath, mode_t mode, int flags,
 
   filepath path(relpath);
   InodeRef in;
-  InodeRef dirinode;
 
   std::scoped_lock lock(client_lock);
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
-  r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirinode);
+  int r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -8148,15 +8125,9 @@ int Client::chownat(int dirfd, const char *relpath, uid_t new_uid, gid_t new_gid
 
   filepath path(relpath);
   InodeRef in;
-  InodeRef dirinode;
 
   std::scoped_lock lock(client_lock);
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
-  r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirinode);
+  int r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -8330,21 +8301,15 @@ int Client::utimensat(int dirfd, const char *relpath, struct timespec times[2], 
 
   filepath path(relpath);
   InodeRef in;
-  InodeRef dirinode;
 
   std::scoped_lock lock(client_lock);
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
 #if defined(__linux__) && defined(O_PATH)
   if (flags & O_PATH) {
     return -CEPHFS_EBADF;
   }
 #endif
 
-  r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirinode);
+  int r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), 0, dirfd);
   if (r < 0) {
     return r;
   }
@@ -9158,13 +9123,7 @@ int Client::create_and_open(int dirfd, const char *relpath, int flags,
   bool followsym = !((flags & O_NOFOLLOW) || ((flags & O_CREAT) && (flags & O_EXCL)));
   int mask = ceph_caps_for_mode(ceph_flags_to_mode(cflags));
 
-  InodeRef dirinode = nullptr;
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
-  r = path_walk(path, &in, perms, followsym, mask, dirinode);
+  int r = path_walk(path, &in, perms, followsym, mask, dirfd);
   if (r == 0 && (flags & O_CREAT) && (flags & O_EXCL))
     return -CEPHFS_EEXIST;
 
@@ -9181,7 +9140,7 @@ int Client::create_and_open(int dirfd, const char *relpath, int flags,
     dirpath.pop_dentry();
     InodeRef dir;
     r = path_walk(dirpath, &dir, perms, true,
-                  cct->_conf->client_permissions ? CEPH_CAP_AUTH_SHARED : 0, dirinode);
+                  cct->_conf->client_permissions ? CEPH_CAP_AUTH_SHARED : 0, dirfd);
     if (r < 0) {
       goto out;
     }
@@ -10680,16 +10639,10 @@ int Client::statxat(int dirfd, const char *relpath,
 
   unsigned mask = statx_to_mask(flags, want);
 
-  InodeRef dirinode;
   std::scoped_lock lock(client_lock);
-  int r = get_fd_inode(dirfd, &dirinode);
-  if (r < 0) {
-    return r;
-  }
-
   InodeRef in;
   filepath path(relpath);
-  r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), mask, dirinode);
+  int r = path_walk(path, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), mask, dirfd);
   if (r < 0) {
     return r;
   }
@@ -11710,7 +11663,6 @@ int Client::ll_walk(const char* name, Inode **out, struct ceph_statx *stx,
 
   filepath fp(name, 0);
   InodeRef in;
-  int rc;
   unsigned mask = statx_to_mask(flags, want);
 
   ldout(cct, 3) << __func__ << " " << name << dendl;
@@ -11718,7 +11670,7 @@ int Client::ll_walk(const char* name, Inode **out, struct ceph_statx *stx,
   tout(cct) << name << std::endl;
 
   std::scoped_lock lock(client_lock);
-  rc = path_walk(fp, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), mask);
+  int rc = path_walk(fp, &in, perms, !(flags & AT_SYMLINK_NOFOLLOW), mask);
   if (rc < 0) {
     /* zero out mask, just in case... */
     stx->stx_mask = 0;
