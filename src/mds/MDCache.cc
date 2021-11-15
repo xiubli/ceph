@@ -6410,6 +6410,21 @@ void MDCache::truncate_inode(CInode *in, LogSegment *ls)
   _truncate_inode(in, ls);
 }
 
+struct C_IO_MDC_TruncateFinish1 : public MDCacheIOContext {
+  CInode *in;
+  LogSegment *ls;
+  C_IO_MDC_TruncateFinish1(MDCache *c, CInode *i, LogSegment *l) :
+    MDCacheIOContext(c, false), in(i), ls(l) {
+  }
+  void finish(int r) override {
+    ceph_assert(r == 0 || r == -CEPHFS_ENOENT);
+    mdcache->truncate_inode_finish1(in, ls);
+  }
+  void print(ostream& out) const override {
+    out << "file_truncate(" << in->ino() << ")";
+  }
+};
+
 struct C_IO_MDC_TruncateFinish : public MDCacheIOContext {
   CInode *in;
   LogSegment *ls;
@@ -6492,8 +6507,8 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
              << header.objver << " offset: " << header.file_offset << " blen: "
 	     << header.block_size << dendl;
     filer.write_trunc(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
-                      data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq,
-                      new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
+                      data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq - 1,
+                      new C_OnFinisher(new C_IO_MDC_TruncateFinish1(this, in, ls),
                                        mds->finisher));
   } else {
     dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
@@ -6515,6 +6530,48 @@ struct C_MDC_TruncateLogged : public MDCacheLogContext {
     mdcache->truncate_inode_logged(in, mut);
   }
 };
+
+void MDCache::truncate_inode_finish1(CInode *in, LogSegment *ls)
+{
+  const auto& pi = in->get_inode();
+  dout(10) << "_truncate_inode "
+	   << pi->truncate_from << " -> " << pi->truncate_size
+	   << " on " << *in << dendl;
+
+  ceph_assert(pi->is_truncating());
+  ceph_assert(pi->truncate_size < (1ULL << 63));
+  ceph_assert(pi->truncate_from < (1ULL << 63));
+  ceph_assert(pi->truncate_size < pi->truncate_from ||
+              (pi->truncate_size == pi->truncate_from &&
+	       pi->fscrypt_last_block.length()));
+
+
+  SnapRealm *realm = in->find_snaprealm();
+  SnapContext nullsnap;
+  const SnapContext *snapc;
+  if (realm) {
+    dout(10) << " realm " << *realm << dendl;
+    snapc = &realm->get_snap_context();
+  } else {
+    dout(10) << " NO realm, using null context" << dendl;
+    snapc = &nullsnap;
+    ceph_assert(in->last == CEPH_NOSNAP);
+  }
+  dout(10) << "_truncate_inode  snapc " << snapc << " on " << *in
+           << " fscrypt_last_block length is " << pi->fscrypt_last_block.length()
+           << dendl;
+  auto layout = pi->layout;
+  dout(10) << "truncate_inode_finish " << *in << dendl;
+
+  dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
+
+  uint64_t length = pi->truncate_from - pi->truncate_size + 4096;
+  filer.truncate(in->ino(), &layout, *snapc,
+                 pi->truncate_size, length, //pi->truncate_from-pi->truncate_size,
+                 pi->truncate_seq, ceph::real_time::min(), 0,
+                 new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
+                                  mds->finisher));
+}
 
 void MDCache::truncate_inode_finish(CInode *in, LogSegment *ls)
 {
