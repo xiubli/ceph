@@ -6410,18 +6410,19 @@ void MDCache::truncate_inode(CInode *in, LogSegment *ls)
   _truncate_inode(in, ls);
 }
 
-struct C_IO_MDC_TruncateFinish1 : public MDCacheIOContext {
+struct C_IO_MDC_TruncateWriteFinish : public MDCacheIOContext {
   CInode *in;
   LogSegment *ls;
-  C_IO_MDC_TruncateFinish1(MDCache *c, CInode *i, LogSegment *l) :
-    MDCacheIOContext(c, false), in(i), ls(l) {
+  uint32_t block_size;
+  C_IO_MDC_TruncateWriteFinish(MDCache *c, CInode *i, LogSegment *l, uint32_t bs) :
+    MDCacheIOContext(c, false), in(i), ls(l), block_size(bs) {
   }
   void finish(int r) override {
     ceph_assert(r == 0 || r == -CEPHFS_ENOENT);
-    mdcache->truncate_inode_finish1(in, ls);
+    mdcache->truncate_inode_write_finish(in, ls, bs);
   }
   void print(ostream& out) const override {
-    out << "file_truncate(" << in->ino() << ")";
+    out << "file_truncate_write(" << in->ino() << ")";
   }
 };
 
@@ -6489,27 +6490,19 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
    * means the truncate size is located in the file hole.
    */
   if (header.block_size) {
-    dout(10) << "_truncate_inode write_trunc on inode " << *in << " objver: "
+    dout(10) << "_truncate_inode write on inode " << *in << " objver: "
              << header.objver << " offset: " << header.file_offset << " blen: "
 	     << header.block_size << dendl;
-    /*
-     * When the Rados receives a write_trunc() request, if the new truncate seq
-     * is larger than current one in Rados, it will assume a write request comes
-     * before the truncate request, and it will do the truncate first and then
-     * write the new data to it.
-     *
-     * Since the offset + blen should always equal to pi->truncate_size, so in
-     * Rados the new writing data end won't exceed the truncated size it just did.
-     *
-     * So the write_trunc() is enough, no need to do the extra filer.truncate().
-     */
-    dout(10) << "_truncate_inode write_trunc on inode " << *in << " objver: "
-             << header.objver << " offset: " << header.file_offset << " blen: "
-	     << header.block_size << dendl;
+    filer.write(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
+                data, ceph::real_time::min(), 0,
+                new C_OnFinisher(new C_IO_MDC_TruncateWriteFinish(this, in, ls),
+                                 mds->finisher));
+#if 0
     filer.write_trunc(in->ino(), &layout, *snapc, header.file_offset, header.block_size,
                       data, ceph::real_time::min(), 0, pi->truncate_size, pi->truncate_seq - 1,
                       new C_OnFinisher(new C_IO_MDC_TruncateFinish1(this, in, ls),
                                        mds->finisher));
+#endif
   } else {
     dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
     filer.truncate(in->ino(), &layout, *snapc,
@@ -6531,10 +6524,11 @@ struct C_MDC_TruncateLogged : public MDCacheLogContext {
   }
 };
 
-void MDCache::truncate_inode_finish1(CInode *in, LogSegment *ls)
+void MDCache::truncate_inode_write_finish(CInode *in, LogSegment *ls,
+                                          uint32_t block_size)
 {
   const auto& pi = in->get_inode();
-  dout(10) << "_truncate_inode "
+  dout(10) << "_truncate_inode_write "
 	   << pi->truncate_from << " -> " << pi->truncate_size
 	   << " on " << *in << dendl;
 
@@ -6557,17 +6551,12 @@ void MDCache::truncate_inode_finish1(CInode *in, LogSegment *ls)
     snapc = &nullsnap;
     ceph_assert(in->last == CEPH_NOSNAP);
   }
-  dout(10) << "_truncate_inode  snapc " << snapc << " on " << *in
+  dout(10) << "_truncate_inode_write  snapc " << snapc << " on " << *in
            << " fscrypt_last_block length is " << pi->fscrypt_last_block.length()
            << dendl;
   auto layout = pi->layout;
-  dout(10) << "truncate_inode_finish " << *in << dendl;
-
-  dout(10) << "_truncate_inode truncate on inode " << *in << dendl;
-
-  uint64_t length = pi->truncate_from - pi->truncate_size + 4096;
-  filer.truncate(in->ino(), &layout, *snapc,
-                 pi->truncate_size, length, //pi->truncate_from-pi->truncate_size,
+  uint64_t length = pi->truncate_from - pi->truncate_size + block_size;
+  filer.truncate(in->ino(), &layout, *snapc, pi->truncate_size, length,
                  pi->truncate_seq, ceph::real_time::min(), 0,
                  new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
                                   mds->finisher));
