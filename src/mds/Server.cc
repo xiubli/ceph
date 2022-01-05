@@ -5024,13 +5024,18 @@ struct C_IO_MDC_ReadtruncFinish : public MDCacheIOContext {
   }
   void finish(int r) override {
     auto mds = get_mds();
-    if (r < 0 && r != -CEPHFS_ENOENT && r != -EOVERFLOW) {
+    if (r < 0 && r != -CEPHFS_ENOENT && r != -EOVERFLOW && r != -ETIMEDOUT) {
       dout(0) << "C_IO_MDC_ReadtruncFinish r = " << r << dendl;
     }
-    ceph_assert(r >= 0 || r == -CEPHFS_ENOENT || r == -EOVERFLOW);
+    ceph_assert(r >= 0 || r == -CEPHFS_ENOENT || r == -EOVERFLOW
+		|| r == -ETIMEDOUT);
     mdr->retry++;
     delete data;
-    mdcache->dispatch_request(mdr);
+    if (r == -ETIMEDOUT) { // op timed out and let the client retry it
+      mds->server->respond_to_request(mdr, -CEPHFS_EAGAIN);
+    } else {
+      mdcache->dispatch_request(mdr);
+    }
   }
   void print(ostream& out) const override {
     out << "read_trunc(" << in->ino() << ")";
@@ -5056,7 +5061,8 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
   __u32 mask = req->head.args.setattr.mask;
   __u32 access_mask = MAY_WRITE;
 
-  if (mdr->fscrypt_verifing_objver)
+  // Once read from Rados, the objver should equal to ULONG_MAX
+  if (mdr->objver != ULONG_MAX)
     goto xlock_done;
 
   if (req->get_header().version < 6) {
@@ -5124,6 +5130,8 @@ xlock_done:
       mds->locker->drop_locks(mdr.get());
       mdr->drop_local_auth_pins();
       cur->add_waiter(CInode::WAIT_TRUNC, new C_MDS_RetryRequest(mdcache, mdr));
+      // The xlock(filelock) has been dropped, reset the objver
+      mdr->objver = ULONG_MAX;
       return;
     }
 
@@ -5145,10 +5153,13 @@ xlock_done:
                << " header.block_size: " << header.block_size
                << dendl;
 
-      if (!header.objver) {
-        dout(20) << __func__ << " The last block is located in a file hole!"
-		 << dendl;
-      } else if (mdr->objver) {
+      // Always read Rados for the first time just after acquiring
+      // the xclock for the filelock to make sure that no client has
+      // changed the object during this time.
+      //
+      // To make sure that the objvers are the same or let the client
+      // retry the size trucate request.
+      if (mdr->objver != ULONG_MAX) {
         if (mdr->objver != header.objver) {
           dout(5) << __func__ << ": header.objver:" << header.objver
                   << " != current objver:" << mdr->objver
@@ -5156,21 +5167,21 @@ xlock_done:
           respond_to_request(mdr, -CEPHFS_EAGAIN);
 	  return;
         }
-        mdr->fscrypt_verifing_objver = false;
+        // Reset the objver just in case later the request will be
+        // queued to retry by dropping the xlock(filelock).
+        mdr->objver = ULONG_MAX;
       } else {
-        mdr->fscrypt_verifing_objver = true;
-
         auto layout = pip->layout;
-	/*
-	 * Try to get the object version after acquied the xlock for
-	 * filelock. Will not drop the locks when trying this to ban
-	 * any client to update this object in Rados.
-	 *
-	 * We will be sure that the extents.size() will be 1, because
-	 * kclient will forbid the fscrypt block size to be larger
-	 * than an object's size. And also one block won't cross two
-	 * different objects.
-	 */
+        /*
+         * Try to get the object version after acquiring the xlock
+         * for filelock. During this it won't drop the locks when
+         * trying this to ban any client to update this object in
+         * Rados.
+         *
+         * The extents.size() will be 1, because kclient will forbid
+         * the fscrypt block size to be larger than an object's size.
+         * And also one block won't cross two different objects.
+         */
         std::vector<ObjectExtent> extents;
         Striper::file_to_extents(g_ceph_context, cur->ino(), &layout, header.file_offset,
                                  header.block_size, pip->truncate_size, extents);

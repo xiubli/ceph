@@ -260,8 +260,8 @@ public:
   bool aborted = false;
   bool killed = false;
 
-  bool fscrypt_verifing_objver = false;
-  uint64_t objver = 0;
+  // the fscrypt truncate objver
+  uint64_t objver = ULONG_MAX;
 
   // for applying projected inode changes
   std::set<MDSCacheObject*> projected_nodes;
