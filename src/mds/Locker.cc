@@ -3934,8 +3934,7 @@ bool Locker::_do_cap_update(CInode *in, Capability *cap,
   mds->mdlog->submit_entry(le, new C_Locker_FileUpdate_finish(this, in, mut, update_flags,
 							      ack, client));
   if (need_flush && !*need_flush &&
-      ((change_max && new_max) || // max INCREASE
-       _need_flush_mdlog(in, dirty)))
+      (change_max || _need_flush_mdlog(in, dirty)))
     *need_flush = true;
 
   return true;
