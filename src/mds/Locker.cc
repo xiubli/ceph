@@ -5421,13 +5421,15 @@ void Locker::file_eval(ScatterLock *lock, bool *need_issue)
       //  W      W       MIX
       // -> any writer means MIX; RD doesn't matter.
       if (((other_wanted|loner_wanted) & CEPH_CAP_GWR) ||
-	  lock->is_waiter_for(SimpleLock::WAIT_WR))
-	scatter_mix(lock, need_issue);
-      else if (!lock->is_wrlocked())   // let excl wrlocks drain first
-	simple_sync(lock, need_issue);
-      else
-	dout(10) << " waiting for wrlock to drain" << dendl;
-    }    
+          lock->is_waiter_for(SimpleLock::WAIT_WR)) {
+        scatter_mix(lock, need_issue);
+      } else if (!lock->is_wrlocked()) {  // let excl wrlocks drain first
+        simple_sync(lock, need_issue);
+      } else {
+        dout(10) << " waiting for wrlock to drain" << dendl;
+        mds->mdlog->flush();
+      }
+    }
   }
 
   // * -> excl?
