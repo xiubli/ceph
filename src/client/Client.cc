@@ -2440,6 +2440,9 @@ void Client::send_request(MetaRequest *request, MetaSession *session,
   ldout(cct, 10) << __func__ << " rebuilding request " << request->get_tid()
 		 << " for mds." << mds << dendl;
   auto r = build_client_request(request);
+  if (!r)
+    return;
+
   if (request->dentry()) {
     r->set_dentry_wanted();
   }
@@ -2483,6 +2486,16 @@ void Client::send_request(MetaRequest *request, MetaSession *session,
 
 ref_t<MClientRequest> Client::build_client_request(MetaRequest *request)
 {
+  int max_retry = sizeof(((struct ceph_mds_request_head*)0)->num_retry);
+  max_retry = 1 << (max_retry * CHAR_BIT);
+  if (request->retry_attempt >= max_retry) {
+    request->abort(-EMULTIHOP);
+    request->caller_cond->notify_all();
+    ldout(cct, 1) << __func__ << " request tid " << request->tid
+                  << " seq overflow" << ", abort it" << dendl;
+    return nullptr;
+  }
+
   auto req = make_message<MClientRequest>(request->get_op());
   req->set_tid(request->tid);
   req->set_stamp(request->op_stamp);
