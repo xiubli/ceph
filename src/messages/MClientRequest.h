@@ -160,8 +160,8 @@ public:
   // normal fields
   void set_stamp(utime_t t) { stamp = t; }
   void set_oldest_client_tid(ceph_tid_t t) { head.oldest_client_tid = t; }
-  void inc_num_fwd() { head.num_fwd = head.num_fwd + 1; }
-  void set_retry_attempt(int a) { head.num_retry = a; }
+  void inc_num_fwd() { head.ext_num_fwd = head.ext_num_fwd + 1; }
+  void set_retry_attempt(int a) { head.ext_num_retry = a; }
   void set_filepath(const filepath& fp) { path = fp; }
   void set_filepath2(const filepath& fp) { path2 = fp; }
   void set_string2(const char *s) { path2.set_path(std::string_view(s), 0); }
@@ -192,8 +192,8 @@ public:
 
   utime_t get_stamp() const { return stamp; }
   ceph_tid_t get_oldest_client_tid() const { return head.oldest_client_tid; }
-  int get_num_fwd() const { return head.num_fwd; }
-  int get_retry_attempt() const { return head.num_retry; }
+  int get_num_fwd() const { return head.ext_num_fwd; }
+  int get_retry_attempt() const { return head.ext_num_retry; }
   int get_op() const { return head.op; }
   unsigned get_caller_uid() const { return head.caller_uid; }
   unsigned get_caller_gid() const { return head.caller_gid; }
@@ -312,8 +312,10 @@ public:
       out << " " << get_filepath2();
     if (stamp != utime_t())
       out << " " << stamp;
-    if (head.num_retry)
-      out << " RETRY=" << (int)head.num_retry;
+    if (head.ext_num_fwd)
+      out << " FWD=" << (int)head.ext_num_fwd;
+    if (head.ext_num_retry)
+      out << " RETRY=" << (int)head.ext_num_retry;
     if (is_async())
       out << " ASYNC";
     if (is_replay())
