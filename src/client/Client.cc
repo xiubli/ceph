@@ -1889,7 +1889,8 @@ int Client::make_request(MetaRequest *request,
 			 const UserPerm& perms,
 			 InodeRef *ptarget, bool *pcreated,
 			 mds_rank_t use_mds,
-			 bufferlist *pdirbl)
+			 bufferlist *pdirbl,
+			 size_t feature_needed)
 {
   int r = 0;
 
@@ -1971,6 +1972,10 @@ int Client::make_request(MetaRequest *request,
 	continue;
     } else {
       session = mds_sessions.at(mds);
+    }
+
+    if (feature_needed != ULONG_MAX && !session->mds_features.test(feature_needed)) {
+      return -CEPHFS_EOPNOTSUPP;
     }
 
     // send request.
@@ -7652,7 +7657,8 @@ int Client::_getvxattr(
   req->set_string2(xattr_name);
 
   bufferlist bl;
-  int res = make_request(req, perms, nullptr, nullptr, rank, &bl);
+  int res = make_request(req, perms, nullptr, nullptr, rank, &bl,
+                         CEPHFS_FEATURE_OP_GETVXATTR);
   ldout(cct, 10) << __func__ << " result=" << res << dendl;
 
   if (res < 0) {
