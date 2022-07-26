@@ -1329,7 +1329,14 @@ void CInode::_commit_ops(int r, C_GatherBuilder &gather_bld,
     return;
   }
 
-  SnapContext snapc;
+  SnapContext snapc;// = realm->get_snap_context();
+//  SnapRealm *realm = find_snaprealm();
+  if (is_file()) {
+    std::vector<snapid_t> snaps{last, first};
+    snapc.seq = last;
+    snapc.snaps = snaps; // = realm->get_snap_context();
+  }
+  dout(0) << __func__ << " on " << *this << " snapc: " << snapc << dendl;
   object_t oid = get_object_name(ino(), frag_t(), "");
 
   for (auto &op : ops_vec) {

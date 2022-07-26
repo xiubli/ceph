@@ -1695,6 +1695,7 @@ void MDCache::journal_cow_dentry(MutationImpl *mut, EMetaBlob *metablob,
       olddn->set_projected_version(dir->get_projected_version());
       metablob->add_primary_dentry(olddn, 0, true, false, false, need_snapflush);
       mut->add_cow_dentry(olddn);
+      oldin->mark_dirty_parent(mut->ls, true);
     } else {
       ceph_assert(dnl->is_remote());
       CDentry *olddn = dir->add_remote_dentry(dn->get_name(), dnl->get_remote_ino(), dnl->get_remote_d_type(), dn->alternate_name, oldfirst, follows);
