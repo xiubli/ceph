@@ -786,6 +786,8 @@ $DAEMONOPTS
         mds data = $CEPH_DEV_DIR/mds.\$id
         mds root ino uid = `id -u`
         mds root ino gid = `id -g`
+        debug mds = 25
+        debug ms = 1
         $(format_conf "${extra_conf}")
 [mgr]
         mgr disabled modules = rook
