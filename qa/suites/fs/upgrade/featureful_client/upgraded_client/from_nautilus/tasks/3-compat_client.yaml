@@ -1,0 +1,14 @@
+overrides:
+  ceph:
+    log-ignorelist:
+      - missing required features
+tasks:
+- exec:
+    mon.a:
+      - ceph fs dump --format=json-pretty
+- sleep:
+    duration: 5
+- fs.clients_evicted:
+    clients:
+      client.0: False
+      client.1: True
