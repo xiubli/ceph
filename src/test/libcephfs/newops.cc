@@ -69,7 +69,7 @@ TEST(LibCephFS, NewOPs)
     // Clients will return -EOPNOTSUPP if new getvxattr op not support yet.
     EXPECT_THAT(r, AnyOf(Gt(0), Eq(-EOPNOTSUPP)));
   }
-
+#if 0
   {
     double val = (double)1.0/(double)128.0;
     std::stringstream ss;
@@ -83,7 +83,7 @@ TEST(LibCephFS, NewOPs)
     // Clients will return -EOPNOTSUPP if new getvxattr op not support yet.
     EXPECT_THAT(r, AnyOf(Gt(0), Eq(-EOPNOTSUPP)));
   }
-
+#endif
   ASSERT_EQ(0, ceph_rmdir(cmount, test_path));
 
   ceph_shutdown(cmount);
