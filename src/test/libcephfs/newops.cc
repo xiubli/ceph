@@ -54,37 +54,51 @@ using namespace std;
 TEST(LibCephFS, NewOPs)
 {
   struct ceph_mount_info *cmount;
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ASSERT_EQ(0, ceph_mount(cmount, "/"));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
 
   const char *test_path = "test_newops_dir";
 
   ASSERT_EQ(0, ceph_mkdirs(cmount, test_path, 0777));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
 
   {
     char value[1024] = "";
     int r = ceph_getxattr(cmount, test_path, "ceph.dir.pin.random", (void*)value, sizeof(value));
+    std::cout << __func__ << " " << __LINE__ << std::endl;
     // Clients will return -EOPNOTSUPP if new getvxattr op not support yet.
     EXPECT_THAT(r, AnyOf(Gt(0), Eq(-EOPNOTSUPP)));
   }
+  std::cout << __func__ << " " << __LINE__ << std::endl;
 
   {
     double val = (double)1.0/(double)128.0;
     std::stringstream ss;
     ss << val;
+    std::cout << __func__ << " " << __LINE__ << std::endl;
     int r = ceph_setxattr(cmount, test_path, "ceph.dir.pin.random", (void*)ss.str().c_str(), strlen(ss.str().c_str()), XATTR_CREATE);
     // Old cephs will return -EINVAL if not support "ceph.dir.pin.random" yet.
+    std::cout << __func__ << " " << __LINE__ << std::endl;
     EXPECT_THAT(r, AnyOf(Eq(0), Eq(-EINVAL)));
 
     char value[1024] = "";
+    std::cout << __func__ << " " << __LINE__ << std::endl;
     r = ceph_getxattr(cmount, test_path, "ceph.dir.pin.random", (void*)value, sizeof(value));
     // Clients will return -EOPNOTSUPP if new getvxattr op not support yet.
+    std::cout << __func__ << " " << __LINE__ << std::endl;
     EXPECT_THAT(r, AnyOf(Gt(0), Eq(-EOPNOTSUPP)));
   }
 
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ASSERT_EQ(0, ceph_rmdir(cmount, test_path));
 
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ceph_shutdown(cmount);
 }
