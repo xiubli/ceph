@@ -19,16 +19,25 @@
 static int update_root_mode()
 {
   struct ceph_mount_info *admin;
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   int r = ceph_create(&admin, NULL);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   if (r < 0)
     return r;
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ceph_conf_read_file(admin, NULL);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ceph_conf_parse_env(admin, NULL);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ceph_conf_set(admin, "client_permissions", "false");
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   r = ceph_mount(admin, "/");
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   if (r < 0)
     goto out;
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   r = ceph_chmod(admin, "/", 01777);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
 out:
   ceph_shutdown(admin);
   return r;
@@ -37,13 +46,17 @@ out:
 
 int main(int argc, char **argv)
 {
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   int r = update_root_mode();
   if (r < 0)
     exit(1);
 
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   ::testing::InitGoogleTest(&argc, argv);
 
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   srand(getpid());
 
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   return RUN_ALL_TESTS();
 }
