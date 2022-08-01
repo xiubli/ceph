@@ -47,6 +47,92 @@ using ::testing::Gt;
 using ::testing::Eq;
 using namespace std;
 
+TEST(LibCephFS, Mount) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_mount(cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_client", "25"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_ms", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ceph_shutdown(cmount);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+
+  ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_mount(cmount, NULL), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ceph_shutdown(cmount);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+}
+
+/*
+ * Test this with different ceph versions
+ */
+
+TEST(LibCephFS, NewOPs0)
+{
+  struct ceph_mount_info *cmount;
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(0, ceph_mount(cmount, "/"));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_client", "25"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_ms", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  const char *test_path = "test_newops_dir";
+
+  ASSERT_EQ(0, ceph_mkdir(cmount, test_path, 0777));
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+
+  {
+    char value[1024] = "";
+    int r = ceph_getxattr(cmount, test_path, "ceph.dir.pin.random", (void*)value, sizeof(value));
+    std::cout << __func__ << " " << __LINE__ << std::endl;
+    // Clients will return -EOPNOTSUPP if new getvxattr op not support yet.
+    EXPECT_THAT(r, AnyOf(Gt(0), Eq(-EOPNOTSUPP)));
+  }
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+
+  ASSERT_EQ(0, ceph_rmdir(cmount, test_path));
+
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ceph_shutdown(cmount);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+}
 /*
  * Test this with different ceph versions
  */
@@ -64,9 +150,21 @@ TEST(LibCephFS, NewOPs)
   ASSERT_EQ(0, ceph_mount(cmount, "/"));
   std::cout << __func__ << " " << __LINE__ << std::endl;
 
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_syslog", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "log_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "err_to_stderr", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_client", "25"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
+  ASSERT_EQ(ceph_conf_set(cmount, "debug_ms", "1"), 0);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
   const char *test_path = "test_newops_dir";
 
-  ASSERT_EQ(0, ceph_mkdirs(cmount, test_path, 0777));
+  ASSERT_EQ(0, ceph_mkdir(cmount, test_path, 0777));
   std::cout << __func__ << " " << __LINE__ << std::endl;
 
   {
@@ -101,4 +199,5 @@ TEST(LibCephFS, NewOPs)
 
   std::cout << __func__ << " " << __LINE__ << std::endl;
   ceph_shutdown(cmount);
+  std::cout << __func__ << " " << __LINE__ << std::endl;
 }
