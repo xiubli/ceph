@@ -1,11 +1,4 @@
 tasks:
-- exec:
-    client.0:
-    - echo $(mount | grep 'ceph-fuse' | awk '{print $3}') > /tmp/newop-mnt.txt
-    - cat /tmp/newop-mnt.txt
-    - echo $?
-    - sudo getfattr -n ceph.dir.pin.random $(cat /tmp/newop-mnt.txt)
-    - echo $?
-    - sudo rmdir -f /tmp/newop-mnt.txt
-    - echo $?
-- print: "**** done libcephfs test"
+  - cephfs_test_runner:
+      modules:
+        - tasks.cephfs.test_newops
