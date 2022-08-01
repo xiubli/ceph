@@ -2,5 +2,16 @@ tasks:
 - workunit:
     clients:
       client.0:
-      - libcephfs/test_newops.sh
+      - echo $(mount | grep 'ceph-fuse' | awk '{print $3}') > /tmp/newop-mnt.txt
+      - cat /tmp/newop-mnt.txt
+      - sudo mkdir $(cat /tmp/newop-mnt.txt)
+      - echo $?
+      - sudo setfattr -n ceph.dir.pin.random -v 0.5 $(cat /tmp/newop-mnt.txt)
+      - echo $?
+      - sudo getfattr -n ceph.dir.pin.random $(cat /tmp/newop-mnt.txt)
+      - echo $?
+      - sudo rmdir -rf $(cat /tmp/newop-mnt.txt)
+      - echo $?
+      - sudo rmdir -f /tmp/newop-mnt.txt
+      - echo $?
 - print: "**** done libcephfs test"
