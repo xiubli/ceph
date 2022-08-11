@@ -22,12 +22,12 @@ tasks:
       - fs/upgrade/volume_client
     env:
       ACTION: populate
-    cleanup: false
+    cleanup: true
 - workunit:
     clients:
       client.1:
       - fs/upgrade/volume_client
     env:
       ACTION: populate
-    cleanup: false
+    cleanup: true
 - print: "**** fs/volume_client populate"
