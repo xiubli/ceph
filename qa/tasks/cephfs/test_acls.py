@@ -9,6 +9,9 @@ log = getLogger(__name__)
 
 class TestACLs(XFSTestsDev):
 
+    def setup_xfsprogs_devs(self):
+        self.install_xfsprogs = False
+
     def test_acls(self):
         from tasks.cephfs.fuse_mount import FuseMount
         from tasks.cephfs.kernel_mount import KernelMount
