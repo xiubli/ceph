@@ -14951,6 +14951,15 @@ int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
   if (r < 0)
     return r;
 
+  /* clear the setuid/setgid bits, if any */
+  if (unlikely(in->mode & (S_ISUID|S_ISGID))) {
+    struct ceph_statx stx = { 0 };
+
+    r = __setattrx(in, &stx, CEPH_SETATTR_KILL_SGUID, f->actor_perms);
+    if (r < 0)
+      goto out;
+  }
+
   std::unique_ptr<C_SaferCond> onuninline = nullptr;
   if (mode & FALLOC_FL_PUNCH_HOLE) {
     if (in->inline_version < CEPH_INLINE_NONE &&
@@ -15031,6 +15040,7 @@ int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
       r = ret;
   }
 
+out:
   put_cap_ref(in, CEPH_CAP_FILE_WR);
   return r;
 }
