@@ -5828,7 +5828,11 @@ int Client::may_setattr(Inode *in, struct ceph_statx *stx, int mask,
   }
 
   if (mask & CEPH_SETATTR_MODE) {
-    if (perms.uid() != 0 && perms.uid() != in->uid)
+    uint32_t m = ~stx->stx_mode & in->mode;
+    if (perms.uid() != 0 && perms.uid() != in->uid &&
+	// Only when any of S_ISUID and S_ISUID mode bits is cleared
+	// will we allow the unprivileged users to change the mode.
+	!((m & (S_ISUID | S_ISGID)) && !(m & ~(S_ISUID | S_ISGID))))
       goto out;
 
     gid_t i_gid = (mask & CEPH_SETATTR_GID) ? stx->stx_gid : in->gid;
