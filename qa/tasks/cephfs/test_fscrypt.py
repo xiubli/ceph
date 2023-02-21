@@ -59,7 +59,7 @@ class TestFscrypt(XFSTestsDev):
         # failure on our own (since this command doesn't set right error code
         # and error message in some cases) and print custom log messages
         # accordingly. This will take a long time and set the timeout to 3 hours.
-        proc = self.mount_a.client_remote.run(args=['evn DIFF_LENGTH=0 '
+        proc = self.mount_a.client_remote.run(args=['env DIFF_LENGTH=0 '
             'sudo ./check generic/317'], cwd=self.xfstests_repo_path,
             stdout=StringIO(), stderr=StringIO(), timeout=10800, check_status=False,
             omit_sudo=False, label='running tests for dummy_encryption from xfstests-dev')
