@@ -182,6 +182,9 @@ class XFSTestsDev(CephFSTestCase):
 
         self.mount_a.client_remote.write_file(join(self.xfstests_repo_path, 'local.config'),
                                               xfstests_config_contents, sudo=True)
+        self.mount_a.client_remote.run(args=['sudo', 'bash', '-c',
+                                             'echo "export DIFF_LENGTH=0" >> /etc/bashrc'],
+                                       omit_sudo=False, check_status=False)
 
     def write_ceph_exclude(self):
         # These tests will fail or take too much time and will
