@@ -112,9 +112,17 @@ TEST(SuidsgidTest, WriteClearSetuid) {
   ceph_close(admin, fd);
 
   string user = "clear_suidsgid_" + stringify(rand());
+  // create access key
+  string key;
+  ASSERT_EQ(0, do_mon_command(
+      "{\"prefix\": \"auth get-or-create\", \"entity\": \"client." + user + "\", "
+      "\"caps\": [\"mon\", \"allow *\", \"osd\", \"allow rwx\", "
+      "\"mds\", \"allow\"], \"format\": \"json\"}", &key));
+
   ASSERT_EQ(0, ceph_create(&cmount, user.c_str()));
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_set(cmount, "key", key.c_str()));
   ASSERT_EQ(ceph_init(cmount), 0);
   UserPerm *perms = ceph_userperm_new(123, 456, 0, NULL);
   ASSERT_NE(nullptr, perms);
