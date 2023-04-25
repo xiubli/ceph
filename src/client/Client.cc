@@ -5822,6 +5822,8 @@ int Client::mds_check_access(Inode *in, const UserPerm& perms, int mask)
   const gid_t *gids;
   int count = perms.get_gids(&gids);
   std::vector<uint64_t> gid_list;
+  bool root_squash_perms = true;
+  bool rw_perms = true;
   filepath path;
 
   ldout(cct, 25) << in << ", uid " << perms.uid() << ", gid " << perms.gid()
@@ -5836,25 +5838,33 @@ int Client::mds_check_access(Inode *in, const UserPerm& perms, int mask)
 
   for (auto& s: cap_auths) {
     if (s.match.match(path.get_path(), perms.uid(), perms.gid(), &gid_list)) {
+      // always follow the last auth caps' permision
+      root_squash_perms = true;
+      rw_perms = true;
+
       if ((mask & MAY_WRITE) && s.writeable &&
 	  s.match.root_squash && ((perms.uid() == 0) || (perms.gid() == 0))) {
-        ldout(cct, 10) << " permission denied, root_squash is enabled and user"
-                       << " (uid " << perms.uid() << ", gid " << perms.gid()
-                       << ") isn't allowed to write" << dendl;
-        return -CEPHFS_EACCES;
+        root_squash_perms = false;
       }
 
       if (((mask & MAY_WRITE) && !s.writeable) ||
           ((mask & MAY_READ) && !s.readable)) {
-        ldout(cct, 10) << " permission denied, mds auth caps readable/writeable:"
-                       << s.readable << "/" << s.writeable << ", request r/w:"
-                       << (mask & MAY_READ) << "/" << (mask & MAY_WRITE) << dendl;
-        return -CEPHFS_EACCES;
+	rw_perms = false;
       }
     }
   }
 
-  return 0;
+  if (!root_squash_perms) {
+    ldout(cct, 10) << " permission denied, root_squash is enabled and user"
+                   << " (uid " << perms.uid() << ", gid " << perms.gid()
+                   << ") isn't allowed to write" << dendl;
+  }
+  if (!rw_perms) {
+    ldout(cct, 10) << " permission denied, mds auth caps readable/writeable:"
+                   << s.readable << "/" << s.writeable << ", request r/w:"
+                   << !!(mask & MAY_READ) << "/" << !!(mask & MAY_WRITE) << dendl;
+  }
+  return root_squash_perms && rw_perms;
 }
 
 int Client::inode_permission(Inode *in, const UserPerm& perms, unsigned want)
