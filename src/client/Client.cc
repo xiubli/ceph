@@ -6650,10 +6650,18 @@ void Client::_unmount(bool abort)
 
   mount_cond.wait(lock, [this] {
     if (!mds_requests.empty()) {
-      ldout(cct, 10) << "waiting on " << mds_requests.size() << " requests"
-		     << dendl;
+      return true;
     }
-    return mds_requests.empty();
+
+    // Only wait for write OPs
+    for (const auto& [tid, req]: mds_requests) {
+      if (req->is_write()) {
+        ldout(cct, 10) << "waiting on " << mds_requests.size() << " requests"
+                       << dendl;
+        return false;
+      }
+    }
+    return true;
   });
 
   cwd.reset();
