@@ -8499,6 +8499,10 @@ int MDCache::path_traverse(MDRequestRef& mdr, MDSContextFactory& cf,
         if (in) {
 	  dout(7) << "linking in remote in " << *in << dendl;
 	  dn->link_remote(dnl, in);
+	  if (is_reintegrate_pending(dn)) {
+	    wait_for_pending_reintegrate(dn, mdr);
+	    return;
+	  }
 	} else {
           dout(7) << "remote link to " << dnl->get_remote_ino() << ", which i don't have" << dendl;
 	  ceph_assert(mdr);  // we shouldn't hit non-primary dentries doing a non-mdr traversal!

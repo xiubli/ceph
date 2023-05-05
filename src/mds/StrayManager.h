@@ -67,17 +67,21 @@ public:
    * Given a dentry within one of my stray directories,
    * send it off to a stray directory in another MDS.
    *
-   * This is for use:
-   *  * Case A: when shutting down a rank, we migrate strays
-   *    away from ourselves rather than waiting for purge
-   *  * Case B: when a client request has a trace that refers to
-   *    a stray inode on another MDS, we migrate that inode from
-   *    there to here, in order that we can later re-integrate it
-   *    here.
+   * When a client request has a trace that refers to a stray
+   * inode on another MDS, we migrate that inode from there to
+   * here, in order that we can later re-integrate it here.
    *
-   * In case B, the receiver should be calling into eval_stray
-   * on completion of mv (i.e. inode put), resulting in a subsequent
-   * reintegration.
+   * The receiver should be calling into eval_stray on completion
+   * of mv (i.e. inode put), resulting in a subsequent reintegration.
+   */
+  void migrate_stray(CDentry *straydn, CDentry *rdn);
+
+  /**
+   * Given a dentry within one of my stray directories,
+   * send it off to a stray directory in another MDS.
+   *
+   * When shutting down a rank, we migrate strays away from
+   * ourselves rather than waiting for purge
    */
   void migrate_stray(CDentry *dn, mds_rank_t dest);
 
