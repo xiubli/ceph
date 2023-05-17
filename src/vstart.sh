@@ -848,6 +848,8 @@ $CCLIENTDEBUG
         keyring = $keyring_fn
         log file = $CEPH_OUT_CLIENT_DIR/\$name.\$pid.log
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
+        debug client = 25
+        debug ms = 1
 
         ; needed for s3tests
         rgw crypt s3 kms backend = testing
@@ -867,6 +869,9 @@ $DAEMONOPTS
         mds root ino uid = `id -u`
         mds root ino gid = `id -g`
         $(format_conf "${extra_conf}")
+        mds snap rstat = true
+        debug mds = 25
+        debug ms = 1
 [mgr]
         mgr disabled modules = rook
         mgr data = $CEPH_DEV_DIR/mgr.\$id
