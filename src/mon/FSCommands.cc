@@ -461,6 +461,18 @@ public:
       {
         fs->mds_map.set_max_filesize(n);
       });
+    } else if (var == "snap_rstat") {
+      bool snap_rstat = true;
+      int r = parse_bool(val, &snap_rstat, ss);
+      if (r != 0) {
+        return r;
+      }
+      fsmap.modify_filesystem(
+          fs->fscid,
+          [snap_rstat](std::shared_ptr<Filesystem> fs)
+      {
+        fs->mds_map.set_snap_rstat(snap_rstat);
+      });
     } else if (var == "max_xattr_size") {
       if (interr.length()) {
 	ss << var << " requires an integer value";
