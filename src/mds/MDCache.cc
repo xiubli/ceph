@@ -8765,8 +8765,11 @@ CInode *MDCache::get_dentry_inode(CDentry *dn, MDRequestRef& mdr, bool projected
   ceph_assert(dnl->is_remote());
   CInode *in = get_inode(dnl->get_remote_ino());
   if (in) {
-    dout(7) << "get_dentry_inode linking in remote in " << *in << dendl;
-    dn->link_remote(dnl, in);
+    /* This maybe called from a reintegrate_stray */
+    if (!mds->server->is_reintegrate_pending(dn)) {
+      dout(7) << "get_dentry_inode linking in remote in " << *in << dendl;
+      dn->link_remote(dnl, in);
+    }
     return in;
   } else {
     dout(10) << "get_dentry_inode on remote dn, opening inode for " << *dn << dendl;
