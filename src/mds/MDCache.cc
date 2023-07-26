@@ -13595,7 +13595,8 @@ void MDCache::upkeep_main(void)
         if (active_with_clients) {
           trim_client_leases();
         }
-        if (is_open()) {
+	/* Wait rejoin ack to finish */
+        if (is_open() && rejoin_ack_gather.empty()) {
           trim();
         }
         if (active_with_clients) {
