@@ -13585,7 +13585,8 @@ void MDCache::upkeep_main(void)
         if (active_with_clients) {
           trim_client_leases();
         }
-        if (is_open()) {
+	/* Do not trim the MDCache until all the MDSs are active */
+        if (is_open() && !mds->mdsmap->is_degraded()) {
           trim();
         }
         if (active_with_clients) {
