@@ -4,4 +4,8 @@ overrides:
   selinux:
     whitelist:
       - scontext=system_u:system_r:logrotate_t:s0
+  install:
+    ceph:
+      enable_coprs: [aflyhorse/iozone]
+      extra_system_packages: [iozone]
 ktype: distro
