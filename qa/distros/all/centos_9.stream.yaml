@@ -7,3 +7,5 @@ overrides:
   install:
     ceph:
       enable_coprs: [ceph/el9]
+      enable_coprs: [aflyhorse/iozone]
+      extra_system_packages: [iozone]
