@@ -190,15 +190,21 @@ TEST_F(LibRadosIoPP, SparseReadOpPP) {
   char buf[128];
   memset(buf, 0xcc, sizeof(buf));
   bufferlist bl;
-  bl.append(buf, sizeof(buf));
-  ASSERT_EQ(0, ioctx.write("foo", bl, sizeof(buf), 0));
+  int len = 1024 * 1024 * 8;
+  int i;
+  // write 1GB contents to Rados
+  for (i = 0; i < len; i++) {
+    bl.append(buf, sizeof(buf));
+  }
+  ASSERT_EQ(0, ioctx.write("foo", bl, bl.length(), 0));
 
-  {
+  i = 0;
+  while (i++ < 1000) {
     std::map<uint64_t, uint64_t> extents;
     bufferlist read_bl;
     int rval = -1;
     ObjectReadOperation op;
-    op.sparse_read(0, sizeof(buf), &extents, &read_bl, &rval);
+    op.sparse_read(0, len, &extents, &read_bl, &rval);
     ASSERT_EQ(0, ioctx.operate("foo", &op, nullptr));
     ASSERT_EQ(0, rval);
     assert_eq_sparse(bl, extents, read_bl);
