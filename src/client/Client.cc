@@ -13869,7 +13869,7 @@ int Client::_do_setxattr(Inode *in, const char *name, const void *value,
 
   trim_cache();
   ldout(cct, 3) << __func__ << "(" << in->ino << ", \"" << name << "\") = " <<
-    res << dendl;
+    res << " xattr_flags = " << xattr_flags << " value = " << value << dendl;
   return res;
 }
 
@@ -13886,6 +13886,7 @@ int Client::_setxattr(Inode *in, const char *name, const void *value,
       return -CEPHFS_EINVAL;
   }
 
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
   bool posix_acl_xattr = false;
   if (acl_type == POSIX_ACL)
     posix_acl_xattr = !strncmp(name, "system.", 7);
@@ -13897,12 +13898,14 @@ int Client::_setxattr(Inode *in, const char *name, const void *value,
       !posix_acl_xattr)
     return -CEPHFS_EOPNOTSUPP;
 
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
   bool check_realm = false;
 
   if (posix_acl_xattr) {
     if (!strcmp(name, ACL_EA_ACCESS)) {
       mode_t new_mode = in->mode;
       if (value) {
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
 	int ret = posix_acl_equiv_mode(value, size, &new_mode);
 	if (ret < 0)
 	  return ret;
@@ -13918,6 +13921,7 @@ int Client::_setxattr(Inode *in, const char *name, const void *value,
 	    return ret;
 	}
       }
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
     } else if (!strcmp(name, ACL_EA_DEFAULT)) {
       if (value) {
 	if (!S_ISDIR(in->mode))
@@ -13945,7 +13949,9 @@ int Client::_setxattr(Inode *in, const char *name, const void *value,
     }
   }
 
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
   int ret = _do_setxattr(in, name, value, size, flags, perms);
+  ldout(cct, 3) << __func__ << " " << __func__ << " acl_type: " << acl_type << dendl;
   if (ret >= 0 && check_realm) {
     // check if snaprealm was created for quota inode
     if (in->quota.is_enabled() &&

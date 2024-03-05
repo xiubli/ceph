@@ -6463,6 +6463,7 @@ int Server::xattr_validate(CInode *cur, const InodeStoreBase::xattr_map_const_pt
         return -CEPHFS_EEXIST;
       }
     }
+    dout(10) << "setxattr '" << xattr_name << "' flag " << flags << " xattrs: " << xattrs << " "<< *cur << dendl;
     if ((flags & CEPH_XATTR_REPLACE) && !(xattrs && xattrs->count(mempool::mds_co::string(xattr_name)))) {
       dout(10) << "setxattr '" << xattr_name << "' XATTR_REPLACE and CEPHFS_ENODATA on " << *cur << dendl;
       return -CEPHFS_ENODATA;
