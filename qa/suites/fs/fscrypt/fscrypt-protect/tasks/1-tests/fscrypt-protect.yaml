@@ -1,0 +1,25 @@
+overrides:
+  kclient:
+    mntopts: [test_dummy_encryption]
+tasks:
+- workunit:
+- parallel:
+   - user-workload
+   - kclient-workload
+user-workload:
+  sequential:
+  - ceph-fuse: [client.0]
+  - workunit:
+      subdir: fscrypt-share
+      clients:
+         client.0:
+           - fs/fscrypt_protect.sh fuse
+kclient-workload:
+  sequential:
+  - kclient: [client.1]
+  - workunit:
+      subdir: fscrypt-share
+      clients:
+         client.1:
+           - fs/fscrypt_protect.sh kclient
+
