@@ -8,8 +8,11 @@ case ${client_type} in
 	"kclient")
 		mkdir fscrypt_dir
 		echo "hello" > fscrypt_dir/fscrypt_test_file
+
 		touch fscrypt_kclient_ready
 		while [ ! -f fscrypt_fuse_ready ] ;
+			pwd;
+			ls -R;
 			do sleep 1;
 		done
 		if grep -q "hello" fscrypt_dir/fscrypt_test_file; then
@@ -21,6 +24,8 @@ case ${client_type} in
 		;;
 	"fuse")
 		while [ ! -f fscrypt_kclient_ready ] ;
+			pwd;
+			ls -R;
 			do sleep 1;
 		done
 
