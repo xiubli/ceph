@@ -10,7 +10,6 @@ user-workload:
   sequential:
   - ceph-fuse: [client.0]
   - workunit:
-      subdir: fscrypt_share
       clients:
          client.0:
            - fs/fscrypt_protect.sh fuse
@@ -19,7 +18,6 @@ kclient-workload:
   sequential:
   - kclient: [client.1]
   - workunit:
-      subdir: fscrypt_share
       clients:
          client.1:
            - fs/fscrypt_protect.sh kclient
