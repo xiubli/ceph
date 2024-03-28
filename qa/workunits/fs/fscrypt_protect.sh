@@ -6,45 +6,66 @@ client_type=$1
 
 case ${client_type} in
 	"kclient")
+		# test contents protection
 		echo "hello" > fscrypt_test_file
-		THEN=`stat -c %z fscrypt_test_file`
-		NOW=`stat -c %z fscrypt_test_file`
-		echo $THEN
-		echo $NOW
-		while [ "$NOW" == "$THEN" ]
+		touch ../fscrypt_kclient_ready
+		while [ -f ../fscrypt_kclient_ready ]
 		do
 			sleep 5
-			NOW=`stat -c %z fscrypt_test_file`
-			echo $NOW
 		done
 		if grep -q "hello" fscrypt_test_file; then
-			echo "Fscrypt-protect test successfully!"
+			echo "Fscrypt contents protect test successfully!"
 		else
-			echo "Fscrypt-protect test failed!"
+			echo "Fscrypt contents protect test failed!"
 			exit 1
 		fi
-		;;
-	"fuse")
-		num=$(ls -l | wc -l)
-		while [ $num -ne 2 ]
+		rm -f fscrypt_test_file
+
+		# test creating directory dentries, the fuse client should
+		# fail and there should be no new dentries to be created
+		mkdir fscrypt_dir
+		touch ../fscrypt_kclient_ready
+		while [ -f ../fscrypt_kclient_ready ]
 		do
 			sleep 5
-			num=$(ls -l | wc -l)
 		done
+		num=$(ls -l fscrypt_dir/ | wc -l)
+		if [ $num -eq 1 ]; then
+			echo "Fscrypt create dir dentries protect test successfully!"
+		else
+			echo "Fscrypt create dir dentries protect test failed!"
+			exit 1
+		fi
+		#touch ../fscrypt_kclient_ready
 
-		# just wait for a while to make sure the $THEN is correctly
-		# updated in kernel client
-		sleep 10
-
+		;;
+	"fuse")
+		while [ ! -f ../fscrypt_kclient_ready ]
+		do
+			sleep 5
+		done
 		set +e
 		echo > ./*
 		set -e
-		touch *
+		rm -f ../fscrypt_kclient_ready
 
-		# wait the kclient test to finish before removing the shared
-		# files when unmounting
-		sleep 60
+		while [ ! -f ../fscrypt_kclient_ready ]
+		do
+			sleep 5
+		done
+		set +e
+		touch `ls`/fscrypt_test_file
+		mkdir `ls`/fscrypt_subdir
+		ln -s . `ls`/fscrypt_symlink
+		set -e
+		rm -f ../fscrypt_kclient_ready
 
+		cnt=20
+		while [ ! -f ../fscrypt_kclient_ready -a $cnt != 0 ]
+		do
+			cnt=$((cnt-1))
+			sleep 5
+		done
 		;;
 	*)
 		echo "Unknown client type $1"
