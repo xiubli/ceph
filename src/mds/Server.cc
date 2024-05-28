@@ -2557,9 +2557,9 @@ void Server::handle_client_request(const cref_t<MClientRequest> &req)
 
   // completed request?
   bool has_completed = false;
+  inodeno_t created;
   if (req->is_replay() || req->get_retry_attempt()) {
     ceph_assert(session);
-    inodeno_t created;
     if (session->have_completed_request(req->get_reqid().tid, &created)) {
       has_completed = true;
       if (!session->is_open())
@@ -2609,6 +2609,12 @@ void Server::handle_client_request(const cref_t<MClientRequest> &req)
   if (session) {
     mdr->session = session;
     session->requests.push_back(&mdr->item_session_request);
+
+    if (has_completed && req->get_op() == CEPH_MDS_OP_CREATE) {
+      ceph_assert(created != inodeno_t());
+
+      set_reply_extra_bl(req, created, mdr->reply_extra_bl);
+    }
   }
 
   if (has_completed)
