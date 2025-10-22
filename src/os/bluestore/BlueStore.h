@@ -761,6 +761,10 @@ public:
       ++nref;
     }
     void put() {
+      if (nref.load(std::memory_order_acquire) == 1) {
+        delete this;
+        return;
+      }
       if (--nref == 0)
 	delete this;
     }
