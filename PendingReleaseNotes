@@ -184,6 +184,11 @@
   a few times in random workloads.  ``mds_dir_prefetch_backend_max`` (default 1)
   limits the number of concurrent background fetches.  This reduces latency in
   large directories while retaining cache warmth for hot directories.
+* Messenger: new ``ms_tcp_zerocopy`` option (default ``false``) makes the
+  async Posix stack send large plaintext payloads with ``MSG_ZEROCOPY``,
+  eliminating the kernel send copy. ``ms_tcp_zerocopy_min_size``
+  (default 16K) sets the per-send threshold. Only crc-mode connections
+  are eligible; secure mode already copies during encryption.
 
 >=21.0.0
 
