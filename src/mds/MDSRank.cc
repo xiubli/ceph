@@ -4104,6 +4104,7 @@ const char** MDSRankDispatcher::get_tracked_conf_keys() const
     "mds_dir_max_entries",
     "mds_dir_prefetch",
     "mds_dir_prefetch_backend",
+    "mds_dir_prefetch_backend_hit_threshold",
     "mds_dir_prefetch_backend_max",
     "mds_dump_cache_threshold_file",
     "mds_dump_cache_threshold_formatter",
