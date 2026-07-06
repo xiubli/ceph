@@ -1646,7 +1646,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegmentRef const& logseg, int type, MDPe
   // allocated_inos
   if (inotablev) {
     if (mds->inotable->get_version() >= inotablev ||
-	unlikely(type == EVENT_UPDATE && skip_replaying_inotable)) {
+	unlikely(skip_replaying_inotable)) {
       dout(10) << "EMetaBlob.replay inotable tablev " << inotablev
 	       << " <= table " << mds->inotable->get_version() << dendl;
       if (allocated_ino)
@@ -1675,7 +1675,7 @@ void EMetaBlob::replay(MDSRank *mds, LogSegmentRef const& logseg, int type, MDPe
   }
   if (sessionmapv) {
     if (mds->sessionmap.get_version() >= sessionmapv ||
-	unlikely(type == EVENT_UPDATE && skip_replaying_inotable)) {
+	unlikely(skip_replaying_inotable)) {
       dout(10) << "EMetaBlob.replay sessionmap v " << sessionmapv
 	       << " <= table " << mds->sessionmap.get_version() << dendl;
       if (used_preallocated_ino)
