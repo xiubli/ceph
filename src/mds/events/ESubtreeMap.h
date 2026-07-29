@@ -24,7 +24,28 @@ class ESubtreeMap : public LogEvent, public SegmentBoundary {
 public:
   EMetaBlob metablob;
   std::map<dirfrag_t, std::vector<dirfrag_t> > subtrees;
-  std::set<dirfrag_t> ambiguous_subtrees;
+  struct ambig_subtree {
+    std::vector<dirfrag_t> bounds;
+    mds_rank_t from;
+    uint64_t tid;
+    ambig_subtree() : from(-1), tid(-1) {}
+    void encode(ceph::buffer::list &bl) const {
+      ENCODE_START(1, 1, bl);
+      encode(bounds, bl);
+      encode(from, bl);
+      encode(tid, bl);
+      ENCODE_FINISH(bl);
+    }
+    void decode(ceph::buffer::list::const_iterator &blp) {
+      DECODE_START(1, blp);
+      decode(bounds, blp);
+      decode(from, blp);
+      decode(tid, blp);
+      DECODE_FINISH(blp);
+    }
+  };
+  std::map<dirfrag_t, ambig_subtree> ambiguous_subtrees;
+
   uint64_t expire_pos = 0;
 
   ESubtreeMap() : LogEvent(EVENT_SUBTREEMAP) {}
@@ -47,6 +68,7 @@ public:
     return true;
   }
 };
+WRITE_CLASS_ENCODER(ESubtreeMap::ambig_subtree)
 WRITE_CLASS_ENCODER_FEATURES(ESubtreeMap)
 
 #endif

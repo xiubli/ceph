@@ -168,6 +168,7 @@
 #include "messages/MExportDirNotify.h"
 #include "messages/MExportDirNotifyAck.h"
 #include "messages/MExportDirFinish.h"
+#include "messages/MExportDirFinishAck.h"
 
 #include "messages/MExportCaps.h"
 #include "messages/MExportCapsAck.h"
@@ -818,6 +819,9 @@ Message *decode_message(CephContext *cct,
     break;
   case MSG_MDS_EXPORTDIRFINISH:
     m = make_message<MExportDirFinish>();
+    break;
+  case MSG_MDS_EXPORTDIRFINISHACK:
+    m = make_message<MExportDirFinishAck>();
     break;
 
   case MSG_MDS_EXPORTDIRNOTIFY:
