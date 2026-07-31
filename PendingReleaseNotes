@@ -1078,7 +1078,15 @@ Relevant tracker: https://tracker.ceph.com/issues/64777
 * MDS now uses host error numbers, as defined in errno.cc, for current platform.
 `errorcode32_t` is converts, internally, error codes from host to Ceph when encoding, and vice versa,
 when decoding, resulting in Linux codes on the wire, and host codes on the receiver.
-All CEPHFS_E* defines have been removed across Ceph (including the Python binding).
+* MDS: The following configuration options have been removed:
+  ``mds_bal_export_pin``, ``mds_export_ephemeral_random``,
+  ``mds_export_ephemeral_random_max``, ``mds_export_ephemeral_distributed``,
+  ``mds_export_ephemeral_distributed_factor``. These export pin and
+  ephemeral pin features did not scale for filesystems with a large
+  number of subtrees and are superseded by the no-subtreemap mode.
+  Relevant tracker: https://tracker.ceph.com/issues/77427
+
+* All CEPHFS_E* defines have been removed across Ceph (including the Python binding).
 Relevant tracker: https://tracker.ceph.com/issues/64611
 
 * RGW: Persistent bucket notifications will use queues with multiple shards instead of one queue. Number of shards

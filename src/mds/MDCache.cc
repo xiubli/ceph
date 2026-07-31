@@ -184,10 +184,6 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
   cache_reservation = g_conf().get_val<double>("mds_cache_reservation");
   cache_health_threshold = g_conf().get_val<double>("mds_health_cache_threshold");
 
-  export_ephemeral_distributed_config =  g_conf().get_val<bool>("mds_export_ephemeral_distributed");
-  export_ephemeral_random_config =  g_conf().get_val<bool>("mds_export_ephemeral_random");
-  export_ephemeral_random_max = g_conf().get_val<double>("mds_export_ephemeral_random_max");
-
   symlink_recovery = g_conf().get_val<bool>("mds_symlink_recovery");
   kill_dirfrag_at = static_cast<enum dirfrag_killpoint>(g_conf().get_val<int64_t>("mds_kill_dirfrag_at"));
 
@@ -219,30 +215,6 @@ void MDCache::handle_conf_change(const std::set<std::string>& changed, const MDS
     cache_memory_limit = g_conf().get_val<Option::size_t>("mds_cache_memory_limit");
   if (changed.count("mds_cache_reservation"))
     cache_reservation = g_conf().get_val<double>("mds_cache_reservation");
-
-  bool ephemeral_pin_config_changed = false;
-  if (changed.count("mds_export_ephemeral_distributed")) {
-    export_ephemeral_distributed_config = g_conf().get_val<bool>("mds_export_ephemeral_distributed");
-    dout(10) << "Migrating any ephemeral distributed pinned inodes" << dendl;
-    /* copy to vector to avoid removals during iteration */
-    ephemeral_pin_config_changed = true;
-  }
-  if (changed.count("mds_export_ephemeral_random")) {
-    export_ephemeral_random_config = g_conf().get_val<bool>("mds_export_ephemeral_random");
-    dout(10) << "Migrating any ephemeral random pinned inodes" << dendl;
-    /* copy to vector to avoid removals during iteration */
-    ephemeral_pin_config_changed = true;
-  }
-  if (ephemeral_pin_config_changed) {
-    std::vector<CInode*> migrate;
-    migrate.assign(export_ephemeral_pins.begin(), export_ephemeral_pins.end());
-    for (auto& in : migrate) {
-      in->maybe_export_pin(true);
-    }
-  }
-  if (changed.count("mds_export_ephemeral_random_max")) {
-    export_ephemeral_random_max = g_conf().get_val<double>("mds_export_ephemeral_random_max");
-  }
 
   if (changed.count("mds_kill_dirfrag_at")) {
     kill_dirfrag_at = static_cast<enum dirfrag_killpoint>(g_conf().get_val<int64_t>("mds_kill_dirfrag_at"));
@@ -14520,7 +14492,7 @@ void MDCache::handle_mdsmap(const MDSMap &mdsmap, const MDSMap &oldmap) {
   if (max_mds <= 1) {
     export_ephemeral_dist_frag_bits = 0;
   } else {
-    double want = g_conf().get_val<double>("mds_export_ephemeral_distributed_factor");
+    double want = 2; /* mds_export_ephemeral_distributed_factor removed */
     want *= max_mds;
     unsigned n = 0;
     while ((1U << n) < (unsigned)want)

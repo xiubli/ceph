@@ -86,7 +86,6 @@ int MDBalancer::proc_message(const cref_t<Message> &m)
 MDBalancer::MDBalancer(MDSRank *m, Messenger *msgr, MonClient *monc) :
     mds(m), messenger(msgr), mon_client(monc)
 {
-  bal_export_pin = g_conf().get_val<bool>("mds_bal_export_pin");
   bal_fragment_dirs = g_conf().get_val<bool>("mds_bal_fragment_dirs");
   bal_fragment_fast_factor = g_conf().get_val<double>("mds_bal_fragment_fast_factor");
   bal_fragment_interval = g_conf().get_val<int64_t>("mds_bal_fragment_interval");
@@ -106,8 +105,6 @@ MDBalancer::MDBalancer(MDSRank *m, Messenger *msgr, MonClient *monc) :
 
 void MDBalancer::handle_conf_change(const std::set<std::string>& changed, const MDSMap& mds_map)
 {
-  if (changed.count("mds_bal_export_pin"))
-    bal_export_pin = g_conf().get_val<bool>("mds_bal_export_pin");
   if (changed.count("mds_bal_fragment_dirs"))
     bal_fragment_dirs = g_conf().get_val<bool>("mds_bal_fragment_dirs");
   if (changed.count("mds_bal_fragment_fast_factor"))

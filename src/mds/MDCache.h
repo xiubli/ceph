@@ -1575,8 +1575,8 @@ private:
   double cache_health_threshold;
   std::array<CInode *, NUM_STRAY> strays{}; // my stray dir
 
-  bool export_ephemeral_distributed_config;
-  bool export_ephemeral_random_config;
+  bool export_ephemeral_distributed_config = false;
+  bool export_ephemeral_random_config = false;
   unsigned export_ephemeral_dist_frag_bits;
 
   // Stores the symlink target on the file object's head
