@@ -1,6 +1,7 @@
 import logging
 import errno
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
+import unittest
 from teuthology.contextutil import safe_while
 from teuthology.exceptions import CommandFailedError
 
@@ -61,9 +62,9 @@ class TestScrub2(CephFSTestCase):
         self.mount_a.run_shell(['mkdir', '-p', path])
         self.mount_a.run_shell(['sync', path])
 
-        self.mount_a.setfattr("d1/d2", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d1/d2/d3/d4", "ceph.dir.pin", "1")
-        self.mount_a.setfattr("d1/d2/d3/d4/d5/d6", "ceph.dir.pin", "2")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         
         self._wait_subtrees([('/d1/d2', 0), ('/d1/d2/d3/d4', 1)], status, 0)
         self._wait_subtrees([('/d1/d2/d3/d4', 1), ('/d1/d2/d3/d4/d5/d6', 2)], status, 1)

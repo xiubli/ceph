@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import unittest
 from textwrap import dedent
 import datetime
 import gevent
@@ -604,7 +605,7 @@ class TestStrays(CephFSTestCase):
         :param path: Filesystem path (string) to move
         :return: None
         """
-        self.mount_a.run_shell(["setfattr", "-n", "ceph.dir.pin", "-v", str(rank), path])
+        # ceph.dir.pin xattr removed, line skipped
         rpath = "/"+path
         self._wait_subtrees([(rpath, rank)], rank=rank, path=rpath)
 
@@ -612,6 +613,7 @@ class TestStrays(CephFSTestCase):
         mds_map = self.fs.get_mds_map()
         return rank not in [i['rank'] for i in mds_map['info'].values()]
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_purge_on_shutdown(self):
         """
         That when an MDS rank is shut down, its purge queue is
@@ -660,6 +662,7 @@ class TestStrays(CephFSTestCase):
         # ...and in the process purge all that data
         self.await_data_pool_empty()
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_migration_on_shutdown(self):
         """
         That when an MDS rank is shut down, any non-purgeable strays
@@ -698,6 +701,7 @@ ln dir_1/original dir_2/linkto
         # See that the stray counter on rank 0 has incremented
         self.assertEqual(self.get_mdc_stat("strays_created", rank_0_id), 1)
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_migrate_unlinked_dir(self):
         """
         Reproduce https://tracker.ceph.com/issues/53597

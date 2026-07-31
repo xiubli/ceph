@@ -112,6 +112,11 @@ balancer with explicit mappings of metadata to particular ranks. This can allow
 the administrator or users to evenly spread application load or limit impact of
 users' metadata requests on the entire cluster.
 
+.. note:: The export pin and ephemeral pin features have been removed.
+   The ``ceph.dir.pin``, ``ceph.dir.pin.random``, and ``ceph.dir.pin.distributed``
+   virtual xattrs are no longer recognized.  The descriptions below are retained
+   for historical reference only.
+
 The mechanism provided for this purpose is called an ``export pin``, an
 extended attribute of directories. The name of this extended attribute is
 ``ceph.dir.pin``.  Users can set this attribute using standard commands:
@@ -142,12 +147,6 @@ directory's export pin. For example:
 
 Setting subtree partitioning policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. note:: The ``mds_export_ephemeral_random``, ``mds_export_ephemeral_distributed``,
-   ``mds_export_ephemeral_random_max``, ``mds_export_ephemeral_distributed_factor``,
-   and ``mds_bal_export_pin`` configuration options have been removed.
-   The ephemeral pinning and export pin features did not scale well for filesystems
-   with a large number of subtrees and are no longer supported.
 
 It is also possible to set up **automatic** static partitioning of subtrees via
 a set of **policies**. In CephFS, this automatic static partitioning is
@@ -198,9 +197,6 @@ ephemerally pinned 50 percent of the time.
 
 It is recommended to only set this to small values, like ``.001`` or ``0.1%``.
 Having too many subtrees may degrade performance.
-
-.. note:: The configuration options controlling ephemeral pin policies have been
-   removed. See the deprecation note above.
 
 Ephemeral pins may override parent export pins and vice versa. What determines
 which policy is followed is the rule of the closest parent: if a closer parent

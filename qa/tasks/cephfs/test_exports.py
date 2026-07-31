@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+import unittest
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.exceptions import CommandFailedError
@@ -8,6 +9,7 @@ from teuthology.contextutil import safe_while, MaxWhileTries
 
 log = logging.getLogger(__name__)
 
+@unittest.skip("ceph.dir.pin xattrs have been removed")
 class TestExports(CephFSTestCase):
     MDSS_REQUIRED = 2
     CLIENTS_REQUIRED = 2

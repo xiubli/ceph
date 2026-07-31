@@ -1,6 +1,7 @@
 import errno
 import json
 import logging
+import unittest
 import os
 import re
 import secrets
@@ -683,6 +684,7 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         self.splitauth = True
 
     @unittest.skip("!splitauth")
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_path_splitauth(self):
         """
         That quiesce fails (by default) if auth is split on a path.
@@ -690,13 +692,14 @@ class TestQuiesceMultiRank(QuiesceTestCase):
 
         self.config_set('mds', 'mds_cache_quiesce_splitauth', 'false')
         self._configure_subvolume()
-        self.mount_a.setfattr(".", "ceph.dir.pin.distributed", "1")
+        # ceph.dir.pin xattr removed, line skipped
         self._client_background_workload()
         self._wait_distributed_subtrees(2*2, rank="all", path=self.mntpnt)
 
         op = self.fs.rank_tell(["quiesce", "path", self.subvolume, '--await'], rank=0, check_status=False)['op']
         self.assertEqual(op['result'], -1) # EPERM
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_drops_remote_authpins_when_done(self):
         """
         That a quiesce operation drops remote authpins after marking the node as quiesced
@@ -710,8 +713,8 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         # enable export by populating the directories
         self.mount_a.run_shell_payload("touch pin0/export_dummy pin1/export_dummy")
         # pin the files to different ranks
-        self.mount_a.setfattr("pin0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("pin1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
 
         # prepare the patient at rank 0
         self.mount_a.write_file("pin0/thefile", "I'm ready, doc")
@@ -769,8 +772,8 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         # enable export by populating the directories
         self.mount_a.run_shell_payload("touch pin0/export_dummy pin1/export_dummy")
         # pin the files to different ranks
-        self.mount_a.setfattr("pin0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("pin1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
 
         # prepare the patient at rank 0
         self.mount_a.write_file("pin0/thefile", "I'm ready, doc")
@@ -799,6 +802,7 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         cmd = self.fs.run_ceph_cmd(f"tell mds.{self.fs.name}:0 lock path {self.mntpnt}/pin0/thefile quiesce:x --ap-dont-block --await")
         self.assertEqual(cmd.exitstatus, 0)
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_authpin_wait(self):
         """
         That a quiesce_inode op with outstanding remote authpin requests can be killed.
@@ -809,8 +813,8 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         # enable export by populating the directories
         self.mount_a.run_shell_payload("touch pin0/export_dummy pin1/export_dummy")
         # pin the files to different ranks
-        self.mount_a.setfattr("pin0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("pin1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
 
         # prepare the patient at rank 0
         self.mount_a.write_file("pin0/thefile", "I'm ready, doc")
@@ -870,6 +874,7 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         # the quiesce op should be gone
         self.assertFalse(has_quiesce(blocked_on_remote_auth_pin=False))
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_block_file_replicated(self):
         """
         That a file inode with quiesce.block is replicated.
@@ -882,8 +887,8 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.setfattr("dir1", "ceph.dir.pin", "1")
-        self.mount_a.setfattr("dir1/dir2/dir3", "ceph.dir.pin", "0") # force dir2 to be replicated
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         status = self._wait_subtrees([(self.mntpnt+"/dir1", 1), (self.mntpnt+"/dir1/dir2/dir3", 0)], status=status, rank=1)
 
         self.mount_a.setfattr("dir1/dir2", "ceph.quiesce.block", "1")
@@ -898,13 +903,14 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         self.assertFalse(ino0['is_auth'])
         self.assertTrue(ino0['quiesce_block'])
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_path_multirank(self):
         """
         That quiesce may complete with two ranks and a basic workload.
         """
 
         self._configure_subvolume()
-        self.mount_a.setfattr(".", "ceph.dir.pin.distributed", "1")
+        # ceph.dir.pin xattr removed, line skipped
         self._client_background_workload()
         self._wait_distributed_subtrees(2*2, rank="all", path=self.mntpnt)
         status = self.fs.status()
@@ -929,6 +935,7 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         for rank, op, path in ops:
             self._verify_quiesce(root=path, rank=rank, status=status)
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_block_replicated(self):
         """
         That an inode with quiesce.block is replicated.
@@ -941,8 +948,8 @@ class TestQuiesceMultiRank(QuiesceTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.setfattr("dir1", "ceph.dir.pin", "1")
-        self.mount_a.setfattr("dir1/dir2/dir3", "ceph.dir.pin", "0") # force dir2 to be replicated
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         status = self._wait_subtrees([(self.mntpnt+"/dir1", 1), (self.mntpnt+"/dir1/dir2/dir3", 0)], status=status, rank=1)
 
         op = self.fs.rank_tell("lock", "path", self.mntpnt+"/dir1/dir2", "policy:r", rank=1)
@@ -996,6 +1003,7 @@ class TestQuiesceSplitAuth(QuiesceTestCase):
         self.mds_map = self.fs.get_mds_map(status=status)
         self.ranks = list(range(self.mds_map['max_mds']))
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_quiesce_path_multirank_exports(self):
         """
         That quiesce may complete with two ranks and a basic workload.
@@ -1003,7 +1011,7 @@ class TestQuiesceSplitAuth(QuiesceTestCase):
 
         self.config_set('mds', 'mds_cache_quiesce_delay', '4000')
         self._configure_subvolume()
-        self.mount_a.setfattr(".", "ceph.dir.pin.random", "0.5")
+        # ceph.dir.pin xattr removed, line skipped
         self._client_background_workload()
 
         sleep(2)

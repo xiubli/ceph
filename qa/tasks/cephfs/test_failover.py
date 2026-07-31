@@ -1003,7 +1003,7 @@ class TestShutdownKillpoints(CephFSTestCase):
         self.fs.set_config("mds_kill_shutdown_at", str(killpoint), rank=1, status=status)
 
         self.mount_a.run_shell_payload("mkdir top && touch top/file")
-        self.mount_a.setfattr("top", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([('/top', 1)], status=status, rank=0)
 
         p = self.mount_a.open_n_background("top", 1000)

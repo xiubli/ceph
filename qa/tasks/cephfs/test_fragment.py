@@ -78,20 +78,7 @@ class TestFragmentation(CephFSTestCase):
         # subtrees for bottom{0,2} below to effect that.
         subtrees = []
         self.mount_a.run_shell_payload("mkdir -p top/splitdir/bottom{0,2}/placeholder")
-        self.mount_a.setfattr("top", "ceph.dir.pin", 2)
-        subtrees.append(('/top', 2))
-        self.mount_a.setfattr("top/splitdir/bottom0", "ceph.dir.pin", 0)
-        subtrees.append(('/top/splitdir/bottom0', 0))
-        self._wait_subtrees(subtrees, status=status, rank=2)
         self.mount_a.create_n_files("top/splitdir/file", split_size-2) # -2 because bottom{0,2} exist
-        self.mount_a.setfattr("top/splitdir", "ceph.dir.pin", 1)
-        subtrees.append(('/top/splitdir', 1))
-        self.mount_a.setfattr("top/splitdir/bottom2", "ceph.dir.pin", 2)
-        subtrees.append(('/top/splitdir/bottom2', 2))
-        self._wait_subtrees(subtrees, status=status, rank=1)
-        self.assertEqual(self.get_splits(rank=1), 0)
-        dir_cache = self.fs.read_cache("top/", rank=1)
-        log.info(f"splitdir = {dir_cache}")
 
         # create the final dentry to trigger split
         self.mount_a.run_shell_payload("touch top/splitdir/fileN")

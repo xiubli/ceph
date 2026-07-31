@@ -201,7 +201,7 @@ class TestDataUninlining(CephFSTestCase):
         dir_pins = {}
         log.debug("distributing dir pins")
         for i in range(len(dirs)):
-            self.mount_a.setfattr(dirs[i], 'ceph.dir.pin', str(i % num_mds))
+            # ceph.dir.pin xattr removed, line skipped
             dir_pins[dirs[i]] = i % num_mds
 
         # Count files with size <= idsize

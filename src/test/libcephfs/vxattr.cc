@@ -285,23 +285,12 @@ TEST(LibCephFS, GetAndSetDirPin) {
   ASSERT_EQ(0, ceph_mkdirs(cmount, "test/d1", 0777));
 
   {
-    char value[1024] = "";
-    int r = ceph_getxattr(cmount, "test/d1", "ceph.dir.pin", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ("-1", value);
+    int r = ceph_getxattr(cmount, "test/d1", "ceph.dir.pin", NULL, 0);
+    ASSERT_EQ(-ENODATA, r);
   }
 
   {
-    char value[1024] = "";
-    int r = -1;
-
-    ASSERT_EQ(0, ceph_setxattr(cmount, "test/d1", "ceph.dir.pin", (void*)"1", 1, XATTR_CREATE));
-
-    r = ceph_getxattr(cmount, "test/d1", "ceph.dir.pin", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ("1", value);
+    ASSERT_EQ(-ENODATA, ceph_setxattr(cmount, "test/d1", "ceph.dir.pin", (void*)"1", 1, XATTR_CREATE));
   }
 
   ASSERT_EQ(0, ceph_rmdir(cmount, "test/d1"));
@@ -321,23 +310,12 @@ TEST(LibCephFS, GetAndSetDirDistribution) {
   ASSERT_EQ(0, ceph_mkdirs(cmount, "test/d2", 0777));
 
   {
-    char value[1024] = "";
-    int r = ceph_getxattr(cmount, "test/d2", "ceph.dir.pin.distributed", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ("0", value);
+    int r = ceph_getxattr(cmount, "test/d2", "ceph.dir.pin.distributed", NULL, 0);
+    ASSERT_EQ(-ENODATA, r);
   }
 
   {
-    char value[1024] = "";
-    int r = -1;
-
-    ASSERT_EQ(0, ceph_setxattr(cmount, "test/d2", "ceph.dir.pin.distributed", (void*)"1", 1, XATTR_CREATE));
-
-    r = ceph_getxattr(cmount, "test/d2", "ceph.dir.pin.distributed", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ("1", value);
+    ASSERT_EQ(-ENODATA, ceph_setxattr(cmount, "test/d2", "ceph.dir.pin.distributed", (void*)"1", 1, XATTR_CREATE));
   }
 
   ASSERT_EQ(0, ceph_rmdir(cmount, "test/d2"));
@@ -357,26 +335,12 @@ TEST(LibCephFS, GetAndSetDirRandom) {
   ASSERT_EQ(0, ceph_mkdirs(cmount, "test/d3", 0777));
 
   {
-    char value[1024] = "";
-    int r = ceph_getxattr(cmount, "test/d3", "ceph.dir.pin.random", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ("0", value);
+    int r = ceph_getxattr(cmount, "test/d3", "ceph.dir.pin.random", NULL, 0);
+    ASSERT_EQ(-ENODATA, r);
   }
 
   {
-    double val = (double)1.0/(double)128.0;
-    std::stringstream ss;
-    ss << val;
-    ASSERT_EQ(0, ceph_setxattr(cmount, "test/d3", "ceph.dir.pin.random", (void*)ss.str().c_str(), strlen(ss.str().c_str()), XATTR_CREATE));
-
-    char value[1024] = "";
-    int r = -1;
-
-    r = ceph_getxattr(cmount, "test/d3", "ceph.dir.pin.random", (void*)value, sizeof(value));
-    ASSERT_GT(r, 0);
-    ASSERT_LT(r, sizeof value);
-    ASSERT_STREQ(ss.str().c_str(), value);
+    ASSERT_EQ(-ENODATA, ceph_setxattr(cmount, "test/d3", "ceph.dir.pin.random", (void*)"0.5", 3, XATTR_CREATE));
   }
 
   ASSERT_EQ(0, ceph_rmdir(cmount, "test/d3"));

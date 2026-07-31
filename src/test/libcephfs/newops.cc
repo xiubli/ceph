@@ -73,8 +73,8 @@ TEST(LibCephFS, NewOPs)
     std::stringstream ss;
     ss << val;
     int r = ceph_setxattr(cmount, test_path, "ceph.dir.pin.random", (void*)ss.str().c_str(), strlen(ss.str().c_str()), XATTR_CREATE);
-    // Old cephs will return -EINVAL if not support "ceph.dir.pin.random" yet.
-    EXPECT_THAT(r, AnyOf(Eq(0), Eq(-EINVAL)));
+    // ceph.dir.pin.random is no longer recognized, returns ENODATA.
+    EXPECT_THAT(r, AnyOf(Eq(0), Eq(-ENODATA)));
 
     char value[1024] = "";
     r = ceph_getxattr(cmount, test_path, "ceph.dir.pin.random", (void*)value, sizeof(value));

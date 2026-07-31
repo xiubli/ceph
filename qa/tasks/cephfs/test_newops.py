@@ -10,9 +10,12 @@ class TestNewOps(CephFSTestCase):
         the clients should avoid sending them to nautilus
         """
 
-        log.info("Test for new getvxattr op...")
+        log.info("Test for unrecognized vxattr...")
         self.mount_a.run_shell(["mkdir", "newop_getvxattr_dir"])
 
-        # to test whether will nautilus crash the MDSs
-        self.mount_a.getfattr("./newop_getvxattr_dir", "ceph.dir.pin.random")
-        log.info("Test for new getvxattr op succeeds")
+        # ceph.dir.pin.random has been removed, expect ENODATA
+        try:
+            self.mount_a.getfattr("./newop_getvxattr_dir", "ceph.dir.pin.random")
+        except CommandFailedError:
+            pass
+        log.info("Test for unrecognized vxattr succeeds")

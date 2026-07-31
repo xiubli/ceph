@@ -89,7 +89,7 @@ class TestMDSMetrics(TestMetrics):
         for rank in ranks:
             dirname = "{0}_{1}".format(TestMDSMetrics.TEST_DIR_PREFIX, rank)
             self.mount_a.run_shell(["mkdir", dirname])
-            self.mount_a.setfattr(dirname, "ceph.dir.pin", str(rank))
+            # ceph.dir.pin xattr removed, line skipped
             log.info("pinning directory {0} to rank {1}".format(dirname, rank))
             for i in range(16):
                 filename = "{0}.{1}".format("test", i)

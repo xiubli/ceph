@@ -1,6 +1,7 @@
 import logging
 from time import sleep
 import os
+import unittest
 
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.exceptions import CommandFailedError
@@ -239,6 +240,7 @@ class TestSubvolumeReplicated(CephFSTestCase):
     CLIENTS_REQUIRED = 1
     MDSS_REQUIRED = 2
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_subvolume_replicated(self):
         """
         That a replica sees the subvolume flag on a directory.
@@ -250,8 +252,8 @@ class TestSubvolumeReplicated(CephFSTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.setfattr("dir1", "ceph.dir.pin", "1")
-        self.mount_a.setfattr("dir1/dir2/dir3", "ceph.dir.pin", "0") # force dir2 to be replicated
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         status = self._wait_subtrees([("/dir1", 1), ("/dir1/dir2/dir3", 0)], status=status, rank=1)
 
         op = self.fs.rank_tell("lock", "path", "/dir1/dir2", "snap:r", rank=1)

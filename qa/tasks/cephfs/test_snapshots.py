@@ -1,6 +1,7 @@
 import errno
 import logging
 import signal
+import unittest
 from textwrap import dedent
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.orchestra.run import Raw
@@ -58,6 +59,7 @@ class TestSnapshots(CephFSTestCase):
         self.mount_a.run_shell(["rmdir", "test-allow-snaps/.snap/snap00"])
         self.mount_a.run_shell(["rmdir", "test-allow-snaps"])
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_kill_mdstable(self):
         """
         check snaptable transcation
@@ -68,7 +70,7 @@ class TestSnapshots(CephFSTestCase):
 
         # setup subtrees
         self.mount_a.run_shell(["mkdir", "-p", "d1/dir"])
-        self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([("/d1", 1)], rank=1, path="/d1")
 
         last_created = self._get_last_created_snap(rank=0,status=status)
@@ -245,6 +247,7 @@ class TestSnapshots(CephFSTestCase):
         self.mount_a.remount()
         self.fs.flush()
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_snapclient_cache(self):
         """
         check if snapclient cache gets synced properly
@@ -255,9 +258,9 @@ class TestSnapshots(CephFSTestCase):
 
         self.mount_a.run_shell(["mkdir", "-p", "d0/d1/dir"])
         self.mount_a.run_shell(["mkdir", "-p", "d0/d2/dir"])
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d0/d1", "ceph.dir.pin", "1")
-        self.mount_a.setfattr("d0/d2", "ceph.dir.pin", "2")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([("/d0", 0), ("/d0/d1", 1), ("/d0/d2", 2)], rank="all", status=status, path="/d0")
 
         def _check_snapclient_cache(snaps_dump, cache_dump=None, rank=0):
@@ -402,6 +405,7 @@ class TestSnapshots(CephFSTestCase):
         self.mount_a.run_shell_payload("stat .snap/one/dir2/file")
 
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_multimds_mksnap(self):
         """
         check if snapshot takes effect across authority subtrees
@@ -411,8 +415,8 @@ class TestSnapshots(CephFSTestCase):
         status = self.fs.wait_for_daemons()
 
         self.mount_a.run_shell(["mkdir", "-p", "d0/d1/empty"])
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d0/d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([("/d0", 0), ("/d0/d1", 1)], rank="all", status=status, path="/d0")
 
         self.mount_a.write_test_pattern("d0/d1/file_a", 8 * 1024 * 1024)
@@ -423,6 +427,7 @@ class TestSnapshots(CephFSTestCase):
         self.mount_a.run_shell(["rmdir", "d0/.snap/s1"])
         self.mount_a.run_shell(["rm", "-rf", "d0"])
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_multimds_past_parents(self):
         """
         check if past parents are properly recorded during across authority rename
@@ -432,8 +437,8 @@ class TestSnapshots(CephFSTestCase):
         status = self.fs.wait_for_daemons()
 
         self.mount_a.run_shell_payload("mkdir -p {d0,d1}/empty")
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([("/d0", 0), ("/d1", 1)], rank=0, status=status)
 
         self.mount_a.run_shell(["mkdir", "d0/d3"])
@@ -450,6 +455,7 @@ class TestSnapshots(CephFSTestCase):
 
         self.mount_a.run_shell(["rm", "-rf", "d0", "d1"])
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_multimds_hardlink(self):
         """
         check if hardlink snapshot works in multimds setup
@@ -460,8 +466,8 @@ class TestSnapshots(CephFSTestCase):
 
         self.mount_a.run_shell_payload("mkdir -p {d0,d1}/empty")
 
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([("/d0", 0), ("/d1", 1)], rank=0, status=status)
 
         self.mount_a.run_python(dedent("""

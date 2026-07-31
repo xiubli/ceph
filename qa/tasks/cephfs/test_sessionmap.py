@@ -1,6 +1,7 @@
 import time
 import json
 import logging
+import unittest
 
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError
@@ -193,6 +194,7 @@ class TestSessionMap(CephFSTestCase):
             with self.assertRaises(CommandFailedError):
                 self.mount_b.mount_wait(cephfs_mntpt="/foo/bar")
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_session_evict_blocklisted(self):
         """
         Check that mds evicts blocklisted client
@@ -205,8 +207,8 @@ class TestSessionMap(CephFSTestCase):
         status = self.fs.wait_for_daemons()
 
         self.mount_a.run_shell_payload("mkdir {d0,d1} && touch {d0,d1}/file")
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([('/d0', 0), ('/d1', 1)], status=status)
 
         self.mount_a.run_shell(["touch", "d0/f0"])
@@ -231,6 +233,7 @@ class TestSessionMap(CephFSTestCase):
         self.mount_a.kill_cleanup()
         self.mount_a.mount_wait()
 
+    @unittest.skip("ceph.dir.pin xattrs have been removed")
     def test_session_evict_non_blocklisted(self):
         """
         Check that mds evicts without blocklisting client
@@ -245,8 +248,8 @@ class TestSessionMap(CephFSTestCase):
         self.mount_b.remount()
 
         self.mount_a.run_shell_payload("mkdir {d0,d1} && touch {d0,d1}/file")
-        self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([('/d0', 0), ('/d1', 1)], status=status)
 
         self.mount_a.run_shell(["touch", "d0/f0"])

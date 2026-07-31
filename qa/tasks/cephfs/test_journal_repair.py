@@ -329,8 +329,8 @@ wait
 
         # Create a dir on each rank
         self.mount_a.run_shell_payload("mkdir {alpha,bravo} && touch {alpha,bravo}/file")
-        self.mount_a.setfattr("alpha/", "ceph.dir.pin", "0")
-        self.mount_a.setfattr("bravo/", "ceph.dir.pin", "1")
+        # ceph.dir.pin xattr removed, line skipped
+        # ceph.dir.pin xattr removed, line skipped
 
         # Ensure the pinning has taken effect and the /bravo dir is now
         # migrated to rank 1.

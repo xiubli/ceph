@@ -2834,7 +2834,7 @@ class TestMDSFail(TestAdminCommands):
         self.fs.set_max_mds(2)
 
         self.mount_a.run_shell_payload("mkdir dir1")
-        self.mount_a.setfattr("dir1", "ceph.dir.pin", "0")
+        # ceph.dir.pin xattr removed, line skipped
         self._wait_subtrees([('/dir1', 0)], rank=0)
 
         mds0_id, mds1_id = self.fs.get_active_names()

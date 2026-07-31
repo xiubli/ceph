@@ -6614,110 +6614,7 @@ void Server::handle_client_setvxattr(const MDRequestRef& mdr, CInode *cur)
 
     mdr->no_early_reply = true;
     pip = pi.inode.get();
-  } else if (name == "ceph.dir.pin"sv) {
-    if (!cur->is_dir() || cur->is_root()) {
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    mds_rank_t rank;
-    try {
-      if (is_rmxattr) {
-	if (cur->get_projected_inode()->export_pin == -1) {
-          respond_to_request(mdr, 0);
-          return;
-	}
-        value = "-1";
-      }
-      rank = boost::lexical_cast<mds_rank_t>(value);
-      if (rank < 0) rank = MDS_RANK_NONE;
-      else if (rank >= MAX_MDS) {
-        respond_to_request(mdr, -EDOM);
-        return;
-      }
-    } catch (boost::bad_lexical_cast const&) {
-      dout(10) << "bad vxattr value, unable to parse int for " << name << dendl;
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    if (!xlock_policylock(mdr, cur))
-      return;
-
-    auto pi = cur->project_inode(mdr);
-    cur->set_export_pin(rank);
-    pip = pi.inode.get();
-  } else if (name == "ceph.dir.pin.random"sv) {
-    if (!cur->is_dir() || cur->is_root()) {
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    double val;
-    try {
-      if (is_rmxattr) {
-	if (cur->get_projected_inode()->export_ephemeral_random_pin == 0.0) {
-	  respond_to_request(mdr, 0);
-          return;
-	}
-        value = "0";
-      }
-      val = boost::lexical_cast<double>(value);
-    } catch (boost::bad_lexical_cast const&) {
-      dout(10) << "bad vxattr value, unable to parse float for " << name << dendl;
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    if (val < 0.0 || 1.0 < val) {
-      respond_to_request(mdr, -EDOM);
-      return;
-    } else if (mdcache->export_ephemeral_random_max < val) {
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    if (!xlock_policylock(mdr, cur))
-      return;
-
-    auto pi = cur->project_inode(mdr);
-    cur->setxattr_ephemeral_rand(val);
-    pip = pi.inode.get();
-  } else if (name == "ceph.dir.pin.distributed"sv) {
-    if (!cur->is_dir() || cur->is_root()) {
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    bool val;
-    try {
-      if (is_rmxattr) {
-	if (cur->get_projected_inode()->get_ephemeral_distributed_pin() == 0) {
-          respond_to_request(mdr, 0);
-          return;
-	}
-        value = "0";
-      }
-      std::string errstr;
-      val = strict_strtob(value, &errstr);
-      if (!errstr.empty()) {
-        dout(10) << "bad vxattr value, unable to parse bool for " << name << ": " << errstr << dendl;
-        respond_to_request(mdr, -EINVAL);
-        return;
-      }
-    } catch (boost::bad_lexical_cast const&) {
-      dout(10) << "bad vxattr value, unable to parse bool for " << name << dendl;
-      respond_to_request(mdr, -EINVAL);
-      return;
-    }
-
-    if (!xlock_policylock(mdr, cur))
-      return;
-
-    auto pi = cur->project_inode(mdr);
-    cur->setxattr_ephemeral_dist(val);
-    pip = pi.inode.get();
-  } else if (name == "ceph.dir.charmap"sv) {
+        } else if (name == "ceph.dir.charmap"sv) {
     // inheritance / InodeStat
     if (!cur->is_dir() || cur->is_root()) {
       respond_to_request(mdr, -EINVAL);
@@ -7367,18 +7264,6 @@ void Server::handle_client_getvxattr(const MDRequestRef& mdr)
     } else {
       auto& c = pip->get_charmap();
       *css << c.get_normalization();
-    }
-  } else if (xattr_name.substr(0, 12) == "ceph.dir.pin"sv) {
-    if (xattr_name == "ceph.dir.pin"sv) {
-      *css << cur->get_projected_inode()->export_pin;
-    } else if (xattr_name == "ceph.dir.pin.random"sv) {
-      *css << cur->get_projected_inode()->export_ephemeral_random_pin;
-    } else if (xattr_name == "ceph.dir.pin.distributed"sv) {
-      *css << cur->get_projected_inode()->get_ephemeral_distributed_pin();
-    } else {
-      // otherwise respond as invalid request
-      // since we only handle ceph vxattrs here
-      r = -ENODATA; // no such attribute
     }
   } else if (xattr_name == "ceph.dir.subvolume"sv) {
     const auto* srnode = cur->get_projected_srnode();

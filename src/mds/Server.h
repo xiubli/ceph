@@ -496,9 +496,6 @@ private:
            xattr_name.rfind("ceph.quota", 0) == 0 ||
            xattr_name == "ceph.quiesce.block"sv ||
            xattr_name == "ceph.dir.subvolume" ||
-           xattr_name == "ceph.dir.pin" ||
-           xattr_name == "ceph.dir.pin.random" ||
-           xattr_name == "ceph.dir.pin.distributed" ||
            xattr_name == "ceph.dir.charmap"sv ||
            xattr_name == "ceph.dir.normalization"sv ||
            xattr_name == "ceph.dir.encoding"sv ||
@@ -516,9 +513,6 @@ private:
 	   xattr_name == "ceph.dir.layout.pool_name" ||
 	   xattr_name == "ceph.dir.layout.pool_id" ||
 	   xattr_name == "ceph.dir.layout.pool_namespace" ||
-	   xattr_name == "ceph.dir.pin" ||
-	   xattr_name == "ceph.dir.pin.random" ||
-	   xattr_name == "ceph.dir.pin.distributed" ||
 	   xattr_name == "ceph.dir.charmap"sv ||
 	   xattr_name == "ceph.dir.normalization"sv ||
 	   xattr_name == "ceph.dir.encoding"sv ||

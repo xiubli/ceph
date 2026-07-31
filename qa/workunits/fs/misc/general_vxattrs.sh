@@ -7,33 +7,20 @@ set -ex
 
 mkdir -p dir
 
-#ceph.dir.pin test, def val -1, reset val -1
-getfattr -n ceph.dir.pin dir | grep 'ceph.dir.pin="-1"'
-setfattr -n ceph.dir.pin dir 2>&1 | grep "setfattr: dir: Invalid argument"
-setfattr -n ceph.dir.pin -v 1 dir
-getfattr -n ceph.dir.pin dir | grep 'ceph.dir.pin="1"'
-setfattr -x ceph.dir.pin dir
-getfattr -n ceph.dir.pin dir | grep 'ceph.dir.pin="-1"'
+# ceph.dir.pin, ceph.dir.pin.distributed, and ceph.dir.pin.random
+# have been removed. Verify they are no longer recognized.
+getfattr -n ceph.dir.pin dir 2>&1 | grep "No such attribute"
+setfattr -n ceph.dir.pin -v 1 dir 2>&1 | grep "No such attribute"
+# test -x (remove) for removed attr
+setfattr -x ceph.dir.pin dir 2>&1 | grep "No such attribute"
 
-#TODO: Once test machines support getfattr for vxattr, uncomment getfattr below
-#see: https://lists.ceph.io/hyperkitty/list/ceph-users@ceph.io/thread/EZL3POLMQLMMNBPAJ2QQ2BAKH44VUNJU/#JJNRRYLUKUAUN5HIL5A7Q4N63OCLWQXF
-#for further detail
+getfattr -n ceph.dir.pin.distributed dir 2>&1 | grep "No such attribute"
+setfattr -n ceph.dir.pin.distributed -v 1 dir 2>&1 | grep "No such attribute"
+setfattr -x ceph.dir.pin.distributed dir 2>&1 | grep "No such attribute"
 
-#ceph.dir.pin.distributed, def val 0, reset val 0
-#getfattr -n ceph.dir.pin.distributed dir | grep 'ceph.dir.pin.distributed="0"'
-setfattr -n ceph.dir.pin.distributed dir 2>&1 | grep "setfattr: dir: Invalid argument"
-setfattr -n ceph.dir.pin.distributed -v 1 dir
-#getfattr -n ceph.dir.pin.distributed dir | grep 'ceph.dir.pin.distributed="1"'
-setfattr -x ceph.dir.pin.distributed dir
-#getfattr -n ceph.dir.pin.distributed dir | grep 'ceph.dir.pin.distributed="0"'
-
-#ceph.dir.pin.random def val 0, reset val 0
-#getfattr -n ceph.dir.pin.random dir | grep 'ceph.dir.pin.random="0"'
-setfattr -n ceph.dir.pin.random dir 2>&1 | grep "setfattr: dir: Invalid argument"
-setfattr -n ceph.dir.pin.random -v 0.01 dir
-#getfattr -n ceph.dir.pin.random dir | grep 'ceph.dir.pin.random="0.01"'
-setfattr -x ceph.dir.pin.random dir
-#getfattr -n ceph.dir.pin.random dir | grep 'ceph.dir.pin.random="0"'
+getfattr -n ceph.dir.pin.random dir 2>&1 | grep "No such attribute"
+setfattr -n ceph.dir.pin.random -v 0.01 dir 2>&1 | grep "No such attribute"
+setfattr -x ceph.dir.pin.random dir 2>&1 | grep "No such attribute"
 
 #ceph.quota, def value 0, reset val 0
 setfattr -n ceph.quota.max_bytes dir 2>&1 | grep "setfattr: dir: Invalid argument"
