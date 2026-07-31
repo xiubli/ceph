@@ -2562,7 +2562,7 @@ void Server::trim_completed_request_list(ceph_tid_t tid, Session *session)
   }
 }
 
-void Server::set_reply_extra_bl(const cref_t<MClientRequest> &req, inodeno_t ino, bufferlist& extra_bl)
+void Server::set_reply_extra_bl(const cref_t<MClientRequest> &req, inodeno_t ino, bufferlist& extra_bl, bool check_async_dirop)
 {
   Session *session = mds->get_session(req);
 
@@ -2572,7 +2572,10 @@ void Server::set_reply_extra_bl(const cref_t<MClientRequest> &req, inodeno_t ino
     dout(10) << "adding created_ino and delegated_inos" << dendl;
     ocresp.created_ino = ino;
 
-    if (delegate_inos_pct && !req->is_queued_for_replay()) {
+    bool do_deleg = delegate_inos_pct && !req->is_queued_for_replay();
+    if (check_async_dirop)
+      do_deleg = do_deleg && client_async_dirop;
+    if (do_deleg) {
       // Try to delegate some prealloc_inos to the client, if it's down to half the max
       unsigned frac = 100 / delegate_inos_pct;
       if (session->delegated_inos.size() < (unsigned)g_conf()->mds_client_prealloc_inos / frac / 2)
