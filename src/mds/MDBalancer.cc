@@ -209,8 +209,15 @@ void MDBalancer::handle_export_pins(void)
 	  /* Only export a directory if it's non-empty. An empty directory will
 	   * be sent back by the importer.
 	   */
-	  if (dir->get_num_head_items() > 0)
-	    mds->mdcache->migrator->export_dir(dir, target);
+	  if (dir->get_num_head_items() > 0) {
+	    auto p = dir->is_freezing_or_frozen_tree();
+	    if (!p.first && !p.second) {
+	      mds->mdcache->migrator->export_dir(dir, target);
+	    } else {
+	      dout(10) << " subtree is already being exported,"
+		       << " delaying export of " << *dir << dendl;
+	    }
+	  }
 	  remove = false;
 	}
       }

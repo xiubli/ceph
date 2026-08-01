@@ -976,6 +976,21 @@ int Migrator::export_dir(CDir *dir, mds_rank_t dest, bool recursive)
   } else if (dir->is_frozen() || dir->is_freezing()) {
     dout(7) << "Cannot export to mds." << dest << " " << *dir << ": is frozen" << dendl;
     return -ERR_FREEZING_OR_FROZEN;
+  } else if (dir->inode->is_dir()) {
+    auto p = dir->is_freezing_or_frozen_tree();
+    if (p.first || p.second) {
+      dout(7) << "Cannot export to mds." << dest << " " << *dir
+              << ": ancestor subtree is already being exported" << dendl;
+      return -ERR_FREEZING_OR_FROZEN;
+    }
+    // Also check if the parent dir is marked for export but hasn't
+    // frozen its tree yet, to close the race window between mark_exporting()
+    // and freeze_tree().
+    if (parent && parent->is_exporting()) {
+      dout(7) << "Cannot export to mds." << dest << " " << *dir
+              << ": parent is already being exported" << dendl;
+      return -ERR_FREEZING_OR_FROZEN;
+    }
   } else if (parent && parent->inode->is_stray()
              && parent->get_parent_dir()->ino() != MDS_INO_MDSDIR(dest)) {
     dout(7) << "Cannot export to mds." << dest << " " << *dir << ": in stray directory" << dendl;
@@ -1266,11 +1281,9 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     lov.add_rdlock(&diri->dirfragtreelock);
 
     if (!mds->locker->acquire_locks(mdr, lov, nullptr, {}, true)) {
-      if (mdr->aborted) {
-	if (mds->logger)
-	  mds->logger->inc(l_mds_export_authpin_fail);
-	export_try_cancel(dir);
-      }
+      if (mds->logger)
+        mds->logger->inc(l_mds_export_authpin_fail);
+      export_try_cancel(dir);
       return;
     }
 
