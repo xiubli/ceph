@@ -133,6 +133,9 @@ protected:
   std::vector<CDir*> subtrees;
 public:
   MDSLogContextBase() = default;
+  void finish_completion(int r) {
+    complete_locked(r);
+  }
   void complete(int r) final;
   void set_write_pos(uint64_t wp, uint64_t seq) {
     write_pos = wp;

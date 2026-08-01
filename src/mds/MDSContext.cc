@@ -127,31 +127,53 @@ void MDSIOContextBase::complete_locked(int r)
   }
 }
 
+namespace {
+
+class C_MDL_CompleteFinisher : public MDSInternalContext {
+  MDSLogContextBase *base;
+  std::vector<CDir*> subtrees;
+  int r;
+public:
+  C_MDL_CompleteFinisher(MDSRank *mds, std::vector<CDir*>&& s,
+                         MDSLogContextBase *b, int _r)
+    : MDSInternalContext(mds), base(b), subtrees(std::move(s)), r(_r) {}
+  void finish(int _r) override {
+    for (auto& d : subtrees)
+      d->put(CDir::PIN_PTRWAITER);
+    // will free base
+    base->finish_completion(r);
+  }
+};
+
+} // anonymous namespace
+
 void MDSLogContextBase::complete(int r)
 {
   MDSRank *mds = get_mds();
   uint64_t pos = write_pos;
   uint64_t seq = event_seq;
 
-  // Update safe_pos before acquiring mds_lock to avoid a deadlock: if
-  // the MDS main thread holds mds_lock and is waiting for the journal
-  // to flush, the journal callback would block on mds_lock and
-  // safe_pos would never advance, preventing segment expiry and
-  // journal trim.
+  // Phase 1: update safe_pos and last_journaled immediately.
+  // These do not need mds_lock and are critical for journal trim
+  // and early_reply to make progress.  If mds_lock is held by
+  // another operation waiting for the journal (e.g. setattr
+  // waiting for the journal to become safe), blocking on mds_lock
+  // here would deadlock.
   if (pos)
     mds->mdlog->set_safe_pos(pos, seq);
 
-  pre_finish(r);
-  {
-    std::lock_guard l(mds->mds_lock);
+  for (auto& d : subtrees)
+    d->last_journaled = seq;
 
-    for (auto& d : subtrees) {
-      d->last_journaled = seq;
-      d->put(CDir::PIN_PTRWAITER);
-    }
-    // will free 'this'
-    complete_locked(r);
-  }
+  pre_finish(r);
+
+  // Phase 2: PIN_PTRWAITER release and complete_locked need
+  // mds_lock.  Queue this work to the MDS main loop instead of
+  // acquiring mds_lock directly, so the journal callback thread
+  // never blocks.
+  std::vector<CDir*> subs;
+  subs.swap(subtrees);
+  mds->queue_waiter(new C_MDL_CompleteFinisher(mds, std::move(subs), this, r));
 }
 
 void MDSIOContextWrapper::finish(int r)

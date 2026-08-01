@@ -789,8 +789,20 @@ void MDLog::trim()
 	     << ", num_remaining_segments=" << num_remaining_segments
 	     << ", max_segments=" << max_segments << dendl;
 
+    // Don't break if the first segment is ready to expire (safe_pos
+    // already covers its end).  Skipping expiry would stall
+    // unexpired_segment_seq and prevent early_reply from making
+    // progress, creating a deadlock when the MDS main thread waits
+    // for journal safety.
+    bool have_expirable = false;
+    if (!segments.empty()) {
+      auto&& first_ls = segments.begin()->second;
+      have_expirable = !pending_events.count(first_ls->seq) &&
+		       first_ls->end <= safe_pos;
+    }
     if ((num_remaining_segments <= max_segments) &&
-	(max_ev < 0 || (num_events - expiring_events - expired_events) <= (uint64_t)max_ev)) {
+	(max_ev < 0 || (num_events - expiring_events - expired_events) <= (uint64_t)max_ev) &&
+	!have_expirable) {
       dout(10) << __func__ << ": breaking out of trim loop - segments/events fell below ceiling"
 	       << " max_segments/max_ev" << dendl;
       break;
@@ -914,6 +926,21 @@ int MDLog::trim_to(SegmentBoundary::seq_t seq)
 void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
 {
   ceph_assert(ceph_mutex_is_locked(mds->mds_lock));
+
+  // If all events in this segment are already safe, the journal data
+  // is durable and any remaining gather work (scatter nudge, dir
+  // commit, table save) is just cleanup that can be deferred.
+  // Force-expire to avoid deadlock when mds_lock is held long-term.
+  if (safe_event_seq >= ls->seq) {
+    dout(5) << "try_expire force expiring (safe_event_seq="
+            << safe_event_seq << " >= seg_seq=" << ls->seq
+            << ") " << *ls << dendl;
+    submit_mutex.lock();
+    _expired(ls);
+    submit_mutex.unlock();
+    return;
+  }
+
   MDSGatherBuilder gather_bld(g_ceph_context);
   ls->try_to_expire(mds, gather_bld, op_prio);
 
@@ -927,7 +954,7 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
     _expired(ls);
     submit_mutex.unlock();
   }
-  
+
   logger->set(l_mdl_segexg, expiring_segments.size());
   logger->set(l_mdl_evexg, expiring_events);
 }
@@ -1612,6 +1639,13 @@ void MDLog::_replay_thread()
   }
 
   safe_pos = journaler->get_write_safe_pos();
+  // Ensure safe_pos covers all replayed segments so that trim can
+  // proceed immediately after replay.
+  if (!segments.empty()) {
+    auto last_seg = segments.rbegin()->second;
+    if (last_seg->end > safe_pos)
+      safe_pos = last_seg->end;
+  }
   if (event_seq) {
     safe_event_seq = event_seq;
     unexpired_segment_seq = segments.begin()->first;
