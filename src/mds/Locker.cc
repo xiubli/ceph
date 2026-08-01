@@ -5623,11 +5623,9 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
   default: ceph_abort();
   }
 
-  int gather = 0;
   if (lock->is_wrlocked()) {
     if (lock->is_cached())
       invalidate_lock_caches(lock);
-    gather++;
   }
 
   if (in->is_head() &&
@@ -5637,14 +5635,14 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
       *need_issue = true;
     else
       issue_caps(in);
-    gather++;
   }
 
+  int gather = 0;
+
   if (lock->get_state() == LOCK_MIX_TSYN &&
-      in->is_replicated()) {
+      in->is_replicated() && lock->is_gathering()) {
     send_lock_message(lock, LOCK_AC_LOCK);
-    if (lock->is_gathering())
-      gather++;
+    gather++;
   }
 
   if (lock->get_type() == CEPH_LOCK_IFILE) {
