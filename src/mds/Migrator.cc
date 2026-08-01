@@ -315,7 +315,7 @@ void Migrator::find_stale_export_freeze()
     export_state_t& stat = p->second;
     CDir* dir = stat.base;
     ++p;
-    if (stat.state != EXPORT_DISCOVERING && stat.state != EXPORT_FREEZING)
+    if (stat.state <= EXPORT_LOCKING || stat.state >= EXPORT_NOTIFYING)
       continue;
     ceph_assert(dir->freeze_tree_state);
     if (stat.last_cum_auth_pins != dir->freeze_tree_state->auth_pins) {
