@@ -358,12 +358,27 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dout(10) << "export state=locking : dropping locks and removing auth_pin" << dendl;
     num_locking_exports--;
     it->second.set_state(EXPORT_CANCELLED);
+    {
+      CInode *diri = dir->get_inode();
+      diri->filelock.clear_scatter_wanted();
+      diri->nestlock.clear_scatter_wanted();
+    }
     dir->auth_unpin(this);
     break;
   case EXPORT_DISCOVERING:
     dout(10) << "export state=discovering : canceling freeze and removing auth_pin" << dendl;
     it->second.set_state(EXPORT_CANCELLED);
     dir->unfreeze_tree();  // cancel the freeze
+    // Clear scatter_wanted flags that were set in dispatch_export_dir.
+    // When the wrlocks are dropped below, wrlock_finish calls try_eval,
+    // and scatter_eval will see scatter_wanted and start a new
+    // unnecessary scatter gather, permanently leaving the inode's scatter
+    // locks in an unowned transitional state.
+    {
+      CInode *diri = dir->get_inode();
+      diri->filelock.clear_scatter_wanted();
+      diri->nestlock.clear_scatter_wanted();
+    }
     dir->auth_unpin(this);
     if (notify_peer && it->second.active_peer) {
       mds->send_message_mds(make_message<MExportDirCancel>(dir->dirfrag(),
@@ -376,6 +391,11 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dout(10) << "export state=freezing : canceling freeze" << dendl;
     it->second.set_state(EXPORT_CANCELLED);
     dir->unfreeze_tree();  // cancel the freeze
+    {
+      CInode *diri = dir->get_inode();
+      diri->filelock.clear_scatter_wanted();
+      diri->nestlock.clear_scatter_wanted();
+    }
     if (dir->is_subtree_root())
       mdcache->try_subtree_merge(dir);
     if (notify_peer && it->second.active_peer) {
@@ -411,6 +431,11 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
       }
     }
     dir->unfreeze_tree();
+    {
+      CInode *diri = dir->get_inode();
+      diri->filelock.clear_scatter_wanted();
+      diri->nestlock.clear_scatter_wanted();
+    }
     mdcache->try_subtree_merge(dir);
     if (notify_peer && it->second.active_peer) {
       mds->send_message_mds(make_message<MExportDirCancel>(dir->dirfrag(),
@@ -2314,6 +2339,11 @@ void Migrator::export_reverse( export_state_t& stat)
   mdcache->process_delayed_expire(dir);
 
   dir->unfreeze_tree();
+  {
+    CInode *diri = dir->get_inode();
+    diri->filelock.clear_scatter_wanted();
+    diri->nestlock.clear_scatter_wanted();
+  }
   mdcache->try_subtree_merge(dir);
 
   // revoke/resume stale caps
