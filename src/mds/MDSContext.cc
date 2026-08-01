@@ -133,6 +133,14 @@ void MDSLogContextBase::complete(int r)
   uint64_t pos = write_pos;
   uint64_t seq = event_seq;
 
+  // Update safe_pos before acquiring mds_lock to avoid a deadlock: if
+  // the MDS main thread holds mds_lock and is waiting for the journal
+  // to flush, the journal callback would block on mds_lock and
+  // safe_pos would never advance, preventing segment expiry and
+  // journal trim.
+  if (pos)
+    mds->mdlog->set_safe_pos(pos, seq);
+
   pre_finish(r);
   {
     std::lock_guard l(mds->mds_lock);
@@ -144,9 +152,6 @@ void MDSLogContextBase::complete(int r)
     // will free 'this'
     complete_locked(r);
   }
-  // safe_pos must be updated after MDSIOContext::complete() call
-  if (pos)
-    mds->mdlog->set_safe_pos(pos, seq);
 }
 
 void MDSIOContextWrapper::finish(int r)
