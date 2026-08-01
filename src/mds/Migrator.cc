@@ -1355,6 +1355,11 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     dout(7) << "subtree is too large, splitting it into: " <<  dendl;
   }
 
+  // Cancel the original export before dispatching children.
+  // Otherwise children will fail to auth_pin because the parent's
+  // tree is still frozen, causing unnecessary delays.
+  export_try_cancel(dir);
+
   for (auto& p : results) {
     CDir *sub = p.first;
     ceph_assert(sub != dir);
@@ -1378,9 +1383,6 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     stat.parent = parent;
     mdcache->dispatch_request(_mdr);
   }
-
-  // cancel the original one
-  export_try_cancel(dir);
 }
 
 void Migrator::child_export_finish(std::shared_ptr<export_base_t>& parent, bool success)
