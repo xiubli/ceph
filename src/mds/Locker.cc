@@ -5220,13 +5220,11 @@ void Locker::simple_xlock(SimpleLock *lock)
   }
 
   int gather = 0;
-  if (lock->is_rdlocked())
-    gather++;
-  if (lock->is_wrlocked())
-    gather++;
-  if (gather && lock->is_cached())
-    invalidate_lock_caches(lock);
-  
+  if (lock->is_wrlocked()) {
+    if (lock->is_cached())
+      invalidate_lock_caches(lock);
+  }
+
   if (in && in->is_head()) {
     if (in->issued_caps_need_gather(lock)) {
       issue_caps(in);
