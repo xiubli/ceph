@@ -4973,6 +4973,21 @@ bool Locker::simple_sync(SimpleLock *lock, bool *need_issue)
 
   int old_state = lock->get_state();
   if (old_state != LOCK_TSYN) {
+    if (lock->is_wrlocked()) {
+      // Do not enter a transitional state while wrlocks are held.
+      // The gather requires !is_wrlocked() to complete, but the
+      // wrlock holder may itself be waiting for this lock to
+      // become stable again, creating a deadlock.  Flush the
+      // journal to help the wrlock holder complete, and let the
+      // subsequent wrlock_finish -> try_eval trigger the
+      // appropriate state transition.
+      dout(10) << " wrlocks held, flushing mdlog" << dendl;
+      if (lock->is_cached())
+	invalidate_lock_caches(lock);
+      mds->mdlog->flush();
+      return false;
+    }
+
     switch (lock->get_state()) {
     case LOCK_MIX: lock->set_state(LOCK_MIX_SYNC); break;
     case LOCK_LOCK: lock->set_state(LOCK_LOCK_SYNC); break;
@@ -4982,22 +4997,6 @@ bool Locker::simple_sync(SimpleLock *lock, bool *need_issue)
     }
 
     int gather = 0;
-    if (lock->is_wrlocked()) {
-      gather++;
-      if (lock->is_cached())
-	invalidate_lock_caches(lock);
-
-      // After a client request is early replied the mdlog won't be flushed
-      // immediately, but before safe replied the request will hold the write
-      // locks. So if the client sends another request to a different MDS
-      // daemon, which then needs to request read lock from current MDS daemon,
-      // then that daemon maybe stuck at most for 5 seconds. Which will lead
-      // the client stuck at most 5 seconds.
-      //
-      // Let's try to flush the mdlog when the write lock is held, which will
-      // release the write locks after mdlog is successfully flushed.
-      mds->mdlog->flush();
-    }
     
     if (lock->get_parent()->is_replicated() && old_state == LOCK_MIX) {
       send_lock_message(lock, LOCK_AC_SYNC);
@@ -5550,7 +5549,13 @@ void Locker::scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchang
 	  // handle_file_lock due to AC_NUDGE, because the rest of the
 	  // time we are replicated or have dirty data and won't get
 	  // called.  bailing here avoids an infinite loop.
-	  ceph_assert(!c); 
+	  //
+	  // If a callback was provided, invoke it now since the
+	  // lock transition could not be started (e.g. simple_sync
+	  // returned false because wrlocks are held).
+	  if (c) {
+	    c->complete(0);
+	  }
 	  break;
 	}
       } else {

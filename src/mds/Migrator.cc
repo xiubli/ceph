@@ -287,30 +287,6 @@ void Migrator::find_stale_export_freeze()
   utime_t cutoff = now;
   cutoff -= g_conf()->mds_freeze_tree_timeout;
 
-
-  /*
-   * We could have situations like:
-   *
-   * - mds.0 authpins an item in subtree A
-   * - mds.0 sends request to mds.1 to authpin an item in subtree B
-   * - mds.0 freezes subtree A
-   * - mds.1 authpins an item in subtree B
-   * - mds.1 sends request to mds.0 to authpin an item in subtree A
-   * - mds.1 freezes subtree B
-   * - mds.1 receives the remote authpin request from mds.0
-   *   (wait because subtree B is freezing)
-   * - mds.0 receives the remote authpin request from mds.1
-   *   (wait because subtree A is freezing)
-   *
-   *
-   * - client request authpins items in subtree B
-   * - freeze subtree B
-   * - import subtree A which is parent of subtree B
-   *   (authpins parent inode of subtree B, see CDir::set_dir_auth())
-   * - freeze subtree A
-   * - client request tries authpinning items in subtree A
-   *   (wait because subtree A is freezing)
-   */
   for (auto p = export_state.begin(); p != export_state.end(); ) {
     export_state_t& stat = p->second;
     CDir* dir = stat.base;
@@ -318,16 +294,33 @@ void Migrator::find_stale_export_freeze()
     if (stat.state <= EXPORT_LOCKING || stat.state >= EXPORT_NOTIFYING)
       continue;
     ceph_assert(dir->freeze_tree_state);
-    if (stat.last_cum_auth_pins != dir->freeze_tree_state->auth_pins) {
-      stat.last_cum_auth_pins = dir->freeze_tree_state->auth_pins;
-      stat.last_cum_auth_pins_change = now;
+
+    // Use an absolute timeout based on when the export entered
+    // the current state, rather than resetting on every auth_pin
+    // change.  With heavy workloads like fsstress, new operations
+    // constantly try to auth_pin inside the frozen subtree,
+    // causing the auth_pins count to change indefinitely and
+    // preventing the old relative timer from ever expiring.
+    utime_t state_start = stat.get_start_time(stat.state);
+    if (now - state_start < g_conf()->mds_freeze_tree_timeout) {
+      // Still within the timeout for this state; also check the
+      // legacy auth_pin change heuristic as an early indicator.
+      if (stat.last_cum_auth_pins != dir->freeze_tree_state->auth_pins) {
+        stat.last_cum_auth_pins = dir->freeze_tree_state->auth_pins;
+        stat.last_cum_auth_pins_change = now;
+      }
       continue;
     }
-    if (stat.last_cum_auth_pins_change >= cutoff)
-      continue;
-    if (mds->logger)
-      mds->logger->inc(l_mds_export_freeze_fail);
-    export_try_cancel(dir);
+
+    // If auth_pins are still changing, the export might be making
+    // progress (e.g. pending operations completing).  But if
+    // auth_pins have been stable for the timeout period or the
+    // absolute state timeout has been exceeded, cancel.
+    if (stat.last_cum_auth_pins_change < cutoff) {
+      if (mds->logger)
+        mds->logger->inc(l_mds_export_freeze_fail);
+      export_try_cancel(dir);
+    }
   }
 }
 
