@@ -5832,6 +5832,7 @@ void Locker::file_eval(ScatterLock *lock, bool *need_issue)
   // * -> excl?
   else if (lock->get_state() != LOCK_EXCL &&
 	   !lock->is_rdlocked() &&
+	   !lock->is_wrlocked() &&   // let excl wrlocks drain first
 	   //!lock->is_waiter_for(SimpleLock::WAIT_WR) &&
 	   in->get_target_loner() >= 0 &&
 	   (in->is_dir() ?
