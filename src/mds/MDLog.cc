@@ -929,8 +929,17 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
 
   // The current segment is still being written to and has no older
   // segment to move dirty items into; it can never be expired.
+  // Remove it from expiring_segments so it doesn't count against
+  // the expiring limit and block journal writes.
   if (ls == peek_current_segment()) {
     dout(10) << "try_expire skipping current segment " << *ls << dendl;
+    submit_mutex.lock();
+    auto eit = expiring_segments.find(ls);
+    if (eit != expiring_segments.end()) {
+      expiring_events -= ls->num_events;
+      expiring_segments.erase(eit);
+    }
+    submit_mutex.unlock();
     return;
   }
 
