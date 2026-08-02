@@ -366,21 +366,21 @@ public:
       (get_sm()->states[state].can_read == XCL && client >= 0 && (get_xlock_by_client() == client ||
 								   get_excl_client() == client)) ||
       (get_state() == LOCK_EXCL && get_excl_client() == client) ||
-      (get_sm() == &sm_filelock && parent->is_auth());
+      ((get_sm() == &sm_filelock || get_sm() == &sm_simplelock) && parent->is_auth());
   }
   bool can_read_projected(client_t client) const {
     return get_sm()->states[state].can_read_projected == ANY ||
       (get_sm()->states[state].can_read_projected == AUTH && parent->is_auth()) ||
       (get_sm()->states[state].can_read_projected == XCL && client >= 0 && (get_xlock_by_client() == client ||
 									     get_excl_client() == client)) ||
-      (get_sm() == &sm_filelock && parent->is_auth());
+      ((get_sm() == &sm_filelock || get_sm() == &sm_simplelock) && parent->is_auth());
   }
   bool can_rdlock(client_t client) const {
     return get_sm()->states[state].can_rdlock == ANY ||
       (get_sm()->states[state].can_rdlock == AUTH && parent->is_auth()) ||
       (get_sm()->states[state].can_rdlock == XCL && client >= 0 && (get_xlock_by_client() == client ||
 								     get_excl_client() == client)) ||
-      (get_sm()->states[state].can_rdlock == REQ && get_sm() == &sm_filelock && parent->is_auth());
+      (get_sm()->states[state].can_rdlock == REQ && (get_sm() == &sm_filelock || get_sm() == &sm_simplelock) && parent->is_auth());
   }
   bool can_wrlock(client_t client) const {
     return get_sm()->states[state].can_wrlock == ANY ||
