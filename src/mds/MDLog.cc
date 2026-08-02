@@ -934,6 +934,14 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
     return;
   }
 
+  // If the segment was already force-expired or is no longer in the
+  // expiring set, skip it.  This prevents infinite recursion when the
+  // gather callback from a prior force-expire re-enters try_expire.
+  if (!expiring_segments.count(ls)) {
+    dout(10) << "try_expire segment no longer expiring " << *ls << dendl;
+    return;
+  }
+
   MDSGatherBuilder gather_bld(g_ceph_context);
   ls->try_to_expire(mds, gather_bld, op_prio);
 
