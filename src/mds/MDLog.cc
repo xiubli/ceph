@@ -927,17 +927,10 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
 {
   ceph_assert(ceph_mutex_is_locked(mds->mds_lock));
 
-  // If all events in this segment are already safe, the journal data
-  // is durable and any remaining gather work (scatter nudge, dir
-  // commit, table save) is just cleanup that can be deferred.
-  // Force-expire to avoid deadlock when mds_lock is held long-term.
-  if (safe_event_seq >= ls->seq) {
-    dout(5) << "try_expire force expiring (safe_event_seq="
-            << safe_event_seq << " >= seg_seq=" << ls->seq
-            << ") " << *ls << dendl;
-    submit_mutex.lock();
-    _expired(ls);
-    submit_mutex.unlock();
+  // The current segment is still being written to and has no older
+  // segment to move dirty items into; it can never be expired.
+  if (ls == peek_current_segment()) {
+    dout(10) << "try_expire skipping current segment " << *ls << dendl;
     return;
   }
 
@@ -948,6 +941,21 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
     dout(5) << "try_expire expiring " << *ls << dendl;
     gather_bld.set_finisher(new C_MaybeExpiredSegment(this, ls, op_prio));
     gather_bld.activate();
+
+    // If all events in this segment are already safe, the journal
+    // data is durable and the gather work (scatter nudge, dir
+    // commit, table save) is just cleanup that can be deferred.
+    // Expire immediately to avoid deadlock when mds_lock is held
+    // long-term.  The gather callback will eventually fire and
+    // re-submit _maybe_expired, which is harmless (already expired).
+    if (safe_event_seq >= ls->seq) {
+      dout(5) << "try_expire force expiring after gather (safe_event_seq="
+              << safe_event_seq << " >= seg_seq=" << ls->seq
+              << ") " << *ls << dendl;
+      submit_mutex.lock();
+      _expired(ls);
+      submit_mutex.unlock();
+    }
   } else {
     dout(10) << "try_expire expired " << *ls << dendl;
     submit_mutex.lock();
@@ -1039,7 +1047,13 @@ void MDLog::_expired(LogSegmentRef const& ls)
   dout(5) << "_expired " << *ls << dendl;
 
   auto it = expiring_segments.find(ls);
-  ceph_assert(it != expiring_segments.end());
+  if (it == expiring_segments.end()) {
+    // Already removed by a prior force-expire (e.g. when the gather
+    // callback fires asynchronously after try_expire already called
+    // _expired for the current segment).  Harmless no-op.
+    dout(10) << "_expired " << *ls << " was already expired" << dendl;
+    return;
+  }
   uint64_t seq = it->second;
   expiring_segments.erase(it);
   expiring_events -= ls->num_events;
@@ -1053,7 +1067,7 @@ void MDLog::_expired(LogSegmentRef const& ls)
 
     // Trigger all waiters
     finish_contexts(g_ceph_context, ls->expiry_waiters);
-    
+
     logger->inc(l_mdl_evex, ls->num_events);
     logger->inc(l_mdl_segex);
   }
