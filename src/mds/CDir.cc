@@ -821,7 +821,10 @@ void CDir::try_remove_dentries_for_stray()
     ++p;
     if (dn->last == CEPH_NOSNAP) {
       ceph_assert(!dn->is_projected());
-      ceph_assert(dn->get_linkage()->is_null());
+      if (!dn->get_linkage()->is_null()) {
+		dout(10) << "stray dentry no longer null; skipping" << dendl;
+		continue;
+	      }
       if (clear_dirty && dn->is_dirty())
 	dn->mark_clean();
       // It's OK to remove lease prematurely because we will never link
