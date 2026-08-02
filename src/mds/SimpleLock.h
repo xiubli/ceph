@@ -376,7 +376,8 @@ public:
     return get_sm()->states[state].can_rdlock == ANY ||
       (get_sm()->states[state].can_rdlock == AUTH && parent->is_auth()) ||
       (get_sm()->states[state].can_rdlock == XCL && client >= 0 && (get_xlock_by_client() == client ||
-								     get_excl_client() == client));
+								     get_excl_client() == client)) ||
+      (get_sm()->states[state].can_rdlock == REQ && get_sm() == &sm_filelock && parent->is_auth());
   }
   bool can_wrlock(client_t client) const {
     return get_sm()->states[state].can_wrlock == ANY ||
