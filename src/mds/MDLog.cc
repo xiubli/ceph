@@ -948,22 +948,22 @@ void MDLog::try_expire(LogSegmentRef const& ls, int op_prio)
   if (gather_bld.has_subs()) {
     dout(5) << "try_expire expiring " << *ls << dendl;
     gather_bld.set_finisher(new C_MaybeExpiredSegment(this, ls, op_prio));
-    gather_bld.activate();
 
-    // If all events in this segment are already safe, the journal
-    // data is durable and the gather work (scatter nudge, dir
-    // commit, table save) is just cleanup that can be deferred.
-    // Expire immediately to avoid deadlock when mds_lock is held
-    // long-term.  The gather callback will eventually fire and
-    // re-submit _maybe_expired, which is harmless (already expired).
+    // If all events in this segment are already safe, force-expire
+    // BEFORE activating the gather.  If activate() fires the finisher
+    // synchronously, the segment must already be out of
+    // expiring_segments so the re-entrant try_expire bails out at
+    // the guard above, avoiding infinite recursion.
     if (safe_event_seq >= ls->seq) {
-      dout(5) << "try_expire force expiring after gather (safe_event_seq="
+      dout(5) << "try_expire force expiring before gather (safe_event_seq="
               << safe_event_seq << " >= seg_seq=" << ls->seq
               << ") " << *ls << dendl;
       submit_mutex.lock();
       _expired(ls);
       submit_mutex.unlock();
     }
+
+    gather_bld.activate();
   } else {
     dout(10) << "try_expire expired " << *ls << dendl;
     submit_mutex.lock();

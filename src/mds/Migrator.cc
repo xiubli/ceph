@@ -291,8 +291,21 @@ void Migrator::find_stale_export_freeze()
     export_state_t& stat = p->second;
     CDir* dir = stat.base;
     ++p;
-    if (stat.state <= EXPORT_LOCKING || stat.state >= EXPORT_NOTIFYING)
+    if (stat.state == EXPORT_CANCELLED || stat.state >= EXPORT_NOTIFYING)
       continue;
+
+    // Exports stuck in EXPORT_LOCKING (e.g. can't acquire snaplock
+    // because of concurrent operations) won't have freeze_tree_state
+    // yet, but still need to be cancelled if they run too long.
+    if (stat.state == EXPORT_LOCKING) {
+      utime_t state_start = stat.get_start_time(stat.state);
+      if (now - state_start >= g_conf()->mds_freeze_tree_timeout) {
+	if (mds->logger)
+	  mds->logger->inc(l_mds_export_freeze_fail);
+	export_try_cancel(dir);
+      }
+      continue;
+    }
     ceph_assert(dir->freeze_tree_state);
 
     // Use an absolute timeout based on when the export entered

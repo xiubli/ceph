@@ -1872,7 +1872,14 @@ bool Locker::rdlock_start(SimpleLock *lock, const MDRequestRef& mut, bool as_ano
       }
     }
 
+    int old_state = lock->get_state();
     if (!_rdlock_kick(lock, as_anon))
+      break;
+    // If _rdlock_kick returned true but the lock state didn't
+    // change and we still can't rdlock, the transition wasn't
+    // possible (e.g. wrlocks are held).  Break out and wait
+    // rather than spinning in a tight loop.
+    if (lock->get_state() == old_state && !lock->can_rdlock(client))
       break;
   }
 
@@ -4981,7 +4988,7 @@ bool Locker::simple_sync(SimpleLock *lock, bool *need_issue)
       // journal to help the wrlock holder complete, and let the
       // subsequent wrlock_finish -> try_eval trigger the
       // appropriate state transition.
-      dout(10) << " wrlocks held, flushing mdlog" << dendl;
+      dout(20) << " wrlocks held, flushing mdlog" << dendl;
       if (lock->is_cached())
 	invalidate_lock_caches(lock);
       mds->mdlog->flush();
@@ -5554,7 +5561,7 @@ void Locker::scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchang
 	  // lock transition could not be started (e.g. simple_sync
 	  // returned false because wrlocks are held).
 	  if (c) {
-	    c->complete(0);
+	    lock->add_waiter(SimpleLock::WAIT_STABLE, c);
 	  }
 	  break;
 	}
@@ -5620,15 +5627,23 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
 
   CInode *in = static_cast<CInode *>(lock->get_parent());
 
+  // If wrlocks are held, skip the transition just like simple_sync.
+  // The scatter read will happen naturally when wrlock_finish calls
+  // try_eval after the wrlock holder releases the lock.  Entering a
+  // transitional state would require wrlocks to drain, and the
+  // wrlock holder may itself be waiting for the lock to become stable.
+  if (lock->is_wrlocked()) {
+    dout(10) << " wrlocks held, skipping scatter_tempsync" << dendl;
+    if (lock->is_cached())
+      invalidate_lock_caches(lock);
+    mds->mdlog->flush();
+    return;
+  }
+
   switch (lock->get_state()) {
   case LOCK_LOCK: lock->set_state(LOCK_LOCK_TSYN); break;
   case LOCK_MIX: lock->set_state(LOCK_MIX_TSYN); break;
   default: ceph_abort();
-  }
-
-  if (lock->is_wrlocked()) {
-    if (lock->is_cached())
-      invalidate_lock_caches(lock);
   }
 
   if (in->is_head() &&
@@ -6280,10 +6295,17 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
     break;
     
   case LOCK_AC_SYNCACK:
+    // The gather may have already completed (state is now SYNC)
+    // if all other gather sources resolved before this ACK arrived.
+    if (lock->get_state() == LOCK_SYNC) {
+      dout(7) << "handle_file_lock " << *in << " from " << from
+	      << ", already synced, ignoring late SYNCACK" << dendl;
+      break;
+    }
     ceph_assert(lock->get_state() == LOCK_MIX_SYNC);
     ceph_assert(lock->is_gathering(from));
     lock->remove_gather(from);
-    
+
     lock->decode_locked_state(m->get_data());
 
     if (lock->is_gathering()) {
