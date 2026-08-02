@@ -364,7 +364,8 @@ public:
     return get_sm()->states[state].can_read == ANY ||
       (get_sm()->states[state].can_read == AUTH && parent->is_auth()) ||
       (get_sm()->states[state].can_read == XCL && client >= 0 && (get_xlock_by_client() == client ||
-								   get_excl_client() == client));
+								   get_excl_client() == client)) ||
+      (get_state() == LOCK_EXCL && get_excl_client() == client);
   }
   bool can_read_projected(client_t client) const {
     return get_sm()->states[state].can_read_projected == ANY ||
