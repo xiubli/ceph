@@ -6192,8 +6192,21 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
     break;
 
   case LOCK_AC_MIXSYNC:
-    ceph_assert(lock->get_state() == LOCK_LOCK);
-    lock->set_state(LOCK_MIX_SYNC2);
+    ceph_assert(lock->get_state() == LOCK_LOCK ||
+           lock->get_state() == LOCK_MIX ||
+           lock->get_state() == LOCK_MIX_SYNC ||
+           lock->get_state() == LOCK_MIX_SYNC2);
+    if (lock->get_state() == LOCK_MIX) {
+      lock->set_state(LOCK_MIX_SYNC);
+      eval_gather(lock, true);
+      if (lock->is_unstable_and_locked()) {
+        if (lock->is_cached())
+          invalidate_lock_caches(lock);
+        mds->mdlog->flush();
+      }
+    } else {
+      lock->set_state(LOCK_MIX_SYNC2);
+    }
     break;
     
   case LOCK_AC_MIX:
