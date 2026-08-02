@@ -1503,7 +1503,12 @@ void CDir::mark_new(LogSegmentRef const& ls)
 }
 
 void CDir::set_fresh_fnode(fnode_const_ptr&& ptr) {
-  ceph_assert(inode->is_auth());
+  // The directory may have been exported to another rank while
+  // the OSD fetch was in flight; silently drop the stale result.
+  if (!inode->is_auth()) {
+    dout(10) << "set_fresh_fnode inode no longer auth on " << *this << dendl;
+    return;
+  }
   ceph_assert(!is_projected());
   ceph_assert(!state_test(STATE_COMMITTING));
   reset_fnode(std::move(ptr));

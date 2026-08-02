@@ -993,6 +993,15 @@ void MDLog::_maybe_expired(LogSegmentRef const& ls, int op_prio)
 
   dout(10) << "_maybe_expired " << *ls << dendl;
   try_expire(ls, op_prio);
+
+  // If the segment was force-expired (removed from expiring_segments)
+  // and is now only held by this callback's reference, ensure it
+  // stays in the segment maps so it can be cleaned up in a future
+  // trim cycle.
+  if (!expiring_segments.count(ls) && !expired_segments.count(ls)) {
+    expired_segments.emplace(ls, ls->seq);
+    expired_events += ls->num_events;
+  }
 }
 
 void MDLog::_trim_expired_segments(auto& locker, MDSContext* ctx)
@@ -1015,7 +1024,8 @@ void MDLog::_trim_expired_segments(auto& locker, MDSContext* ctx)
         }
         dout(20) << __func__ << ": expiring " << *ls2 << dendl;
         expired_events -= ls2->num_events;
-        expired_segments.erase(ls2);
+        if (expiring_segments.count(ls2))
+		  expired_segments.erase(ls2);
         if (pre_segments_size > 0)
           pre_segments_size--;
         num_events -= ls2->num_events;
