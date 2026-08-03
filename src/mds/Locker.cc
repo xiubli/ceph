@@ -227,9 +227,24 @@ bool Locker::try_rdlock_snap_layout(CInode *in, const MDRequestRef& mdr,
 
     if (!found_locked) {
       if (!t->snaplock.can_rdlock(client)) {
-        err = "failed to acquire snap lock"sv;
-	t->snaplock.add_waiter(SimpleLock::WAIT_RD, new C_MDS_RetryRequest(mdcache, mdr));
-	goto failed;
+	/*
+	 * Try to kick the lock into a readable state before
+	 * giving up.  Without this, a snaplock stuck in a
+	 * non-readable state on a non-auth MDS would never
+	 * transition, because the WAIT_RD waiter relies on
+	 * _rdlock_kick or lock state changes that may never
+	 * come from the auth MDS.
+	 */
+	if (_rdlock_kick(&t->snaplock, false) &&
+	    t->snaplock.can_rdlock(client)) {
+	  t->snaplock.get_rdlock();
+	  mdr->locks.emplace(&t->snaplock, MutationImpl::LockOp::RDLOCK);
+	  dout(20) << " got rdlock on " << t->snaplock << " " << *t << dendl;
+	} else {
+	  err = "failed to acquire snap lock"sv;
+	  t->snaplock.add_waiter(SimpleLock::WAIT_RD, new C_MDS_RetryRequest(mdcache, mdr));
+	  goto failed;
+	}
       }
       t->snaplock.get_rdlock();
       mdr->locks.emplace(&t->snaplock, MutationImpl::LockOp::RDLOCK);
