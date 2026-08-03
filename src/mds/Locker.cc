@@ -300,19 +300,6 @@ bool Locker::try_rdlock_snap_layout(CInode *in, const MDRequestRef& mdr,
 
   mdr->dir_root[n] = root;
   mdr->dir_depth[n] = depth;
-
-  /*
-   * Release the snaplock/policylock rdlocks immediately.  They were
-   * acquired only to walk the snaprealm hierarchy; holding them for
-   * the full request lifetime blocks LOCK_AC_LOCK gathers.  On
-   * high-concurrency workloads the probability that *some* request
-   * holds an isnap rdlock at any given instant approaches 1,
-   * preventing the gather from ever completing.
-   *
-   * MDLog ordering guarantees consistency with mksnap/setlayout.
-   */
-  drop_snap_rdlocks_for_replica(mdr.get());
-
   return true;
 
 failed:

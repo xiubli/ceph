@@ -8718,6 +8718,25 @@ int MDCache::path_traverse(const MDRequestRef& mdr, MDSContextFactory& cf,
   if (rdlock_path)
     mdr->locking_state |= MutationImpl::PATH_LOCKED;
 
+  /*
+   * Release the snaplock/policylock rdlocks now that the full path
+   * has been traversed and all try_rdlock_snap_layout calls have
+   * completed.  They were acquired only for the snaprealm hierarchy
+   * walk; holding them for the full request lifetime blocks
+   * LOCK_AC_LOCK gathers.  On high-concurrency workloads the
+   * probability that *some* request holds an isnap rdlock at
+   * any instant approaches 1, preventing the gather from ever
+   * completing.
+   *
+   * MDLog ordering guarantees consistency with mksnap/setlayout.
+   *
+   * Done here (at the end of path_traverse) rather than inside
+   * try_rdlock_snap_layout so that the snaprealm state seen by
+   * all calls within a single path_traverse is consistent.
+   */
+  if ((flags & MDS_TRAVERSE_RDLOCK_SNAP) && mdr)
+    mds->locker->drop_snap_rdlocks_for_replica(mdr.get());
+
   return 0;
 }
 
