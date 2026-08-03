@@ -2983,6 +2983,18 @@ bool CInode::freeze_inode(int auth_pin_allowance)
 
   ceph_assert(auth_pin_allowance > 0);  // otherwise we need to adjust parent's nested_auth_pins
   ceph_assert(auth_pins >= auth_pin_allowance);
+
+  /*
+   * If a lock cache has suppressed frozen inode (via disable_frozen_inode),
+   * invalidate it before checking frozen_inode_suppressed.  Otherwise we
+   * would enter the FREEZING path, call invalidate_lock_caches from there
+   * which triggers maybe_finish_freeze_inode -> finish_waiting(WAIT_FROZEN)
+   * before the caller has added its WAIT_FROZEN callback, leaving the
+   * callback orphaned and the freeze permanently stuck.
+   */
+  if (!dir->lock_caches_with_auth_pins.empty())
+    mdcache->mds->locker->invalidate_lock_caches(dir);
+
   if (auth_pins == auth_pin_allowance && !dir->frozen_inode_suppressed) {
     dout(10) << "freeze_inode - frozen" << dendl;
     if (!state_test(STATE_FROZEN)) {
@@ -3004,9 +3016,6 @@ bool CInode::freeze_inode(int auth_pin_allowance)
 
   if (is_frozen_auth_pin())
     unfreeze_auth_pin();
-
-  if (!dir->lock_caches_with_auth_pins.empty())
-    mdcache->mds->locker->invalidate_lock_caches(dir);
 
   static const int lock_types[] = {
     CEPH_LOCK_IQUIESCE,
