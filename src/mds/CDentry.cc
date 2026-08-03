@@ -559,8 +559,12 @@ void CDentry::decode_lock_state(int type, const bufferlist& bl)
   }
 
   if (p.end()) {
-    // null
-    ceph_assert(linkage.is_null());
+    // null.  After an export the replica may still have stale non-null
+    // state while the new auth has already nulled the dentry.  Accept
+    // the auth's version rather than asserting.
+    if (!linkage.is_null()) {
+      dout(7) << __func__ << " auth says null, trimming stale " << *this << dendl;
+    }
     return;
   }
 

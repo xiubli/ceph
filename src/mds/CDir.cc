@@ -1581,9 +1581,14 @@ void CDir::fetch(std::string_view dname, snapid_t last,
     dout(10) << "fetch on " << *this << dendl;
   else
     dout(10) << "fetch key(" << dname << ", '" << last << "')" << dendl;
-  
+
   ceph_assert(is_auth());
-  ceph_assert(!is_complete());
+  if (is_complete()) {
+    dout(7) << "fetch on already complete " << *this << dendl;
+    if (c)
+      c->complete(0);
+    return;
+  }
 
   if (!ignore_authpinnability && !can_auth_pin()) {
     if (c) {
