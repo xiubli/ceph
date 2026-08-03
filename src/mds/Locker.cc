@@ -498,6 +498,20 @@ bool Locker::acquire_locks(const MDRequestRef& mdr,
 	object->add_waiter(MDSCacheObject::WAIT_SINGLEAUTH, new C_MDS_RetryRequest(mdcache, mdr));
 	return false;
       }
+      /*
+       * If already remotely authpinned from a previous
+       * acquire_locks iteration, skip it.  Otherwise each
+       * re-dispatch would re-add it to mustpin_remote,
+       * sending duplicate authpin requests and preventing
+       * waiting_on_peer from ever becoming empty.
+       */
+      {
+	auto stat_p = mdr->find_object_state(object);
+	if (stat_p && stat_p->remote_auth_pinned != MDS_RANK_NONE) {
+	  dout(10) << " already remote auth_pinned " << *object << dendl;
+	  continue;
+	}
+      }
       mustpin_remote[object->authority().first].insert(object);
       continue;
     }
