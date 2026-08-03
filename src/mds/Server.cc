@@ -3880,7 +3880,19 @@ CInode* Server::rdlock_path_pin_ref(const MDRequestRef& mdr,
     if (ref->is_frozen() || ref->is_frozen_auth_pin() ||
 	(ref->is_freezing() && !mdr->is_auth_pinned(ref))) {
       dout(7) << "waiting for !frozen/authpinnable on " << *ref << dendl;
+      /*
+       * The inode-level WAIT_UNFREEZE handles the case
+       * where the inode itself is frozen (freeze_inode).
+       * For subtree exports the parent CDir is frozen, and
+       * CDir::unfreeze_tree() only processes CDir-level
+       * waiters, so also add a CDir-level waiter when the
+       * parent dir is frozen.
+       */
       ref->add_waiter(CInode::WAIT_UNFREEZE, cf.build());
+      if (ref->get_parent_dir() &&
+	  ref->get_parent_dir()->is_frozen()) {
+	ref->get_parent_dir()->add_waiter(CDir::WAIT_UNFREEZE, cf.build());
+      }
       return 0;
     }
     mdr->auth_pin(ref);
@@ -4192,7 +4204,17 @@ CDir* Server::try_get_complete_dirfrag(CInode *diri, frag_t fg, const MDRequestR
     if (diri->is_frozen()) {
       dout(10) << __func__ << ": dir inode is frozen, waiting " << *diri << dendl;
       ceph_assert(diri->get_parent_dir());
-      diri->add_waiter(CInode::WAIT_UNFREEZE, new C_MDS_RetryRequest(mdcache, mdr));
+      /*
+       * Inode-level WAIT_UNFREEZE for freeze_inode, plus
+       * CDir-level for subtree exports (CDir::unfreeze_tree
+       * only processes CDir waiters).
+       */
+      diri->add_waiter(CInode::WAIT_UNFREEZE,
+		       new C_MDS_RetryRequest(mdcache, mdr));
+      if (diri->get_parent_dir()->is_frozen()) {
+	diri->get_parent_dir()->add_waiter(CDir::WAIT_UNFREEZE,
+					   new C_MDS_RetryRequest(mdcache, mdr));
+      }
       return nullptr;
     }
 

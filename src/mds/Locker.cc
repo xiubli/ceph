@@ -3271,6 +3271,11 @@ bool Locker::check_inode_max_size(CInode *in, bool force_wrlock,
     dout(10) << "check_inode_max_size frozen, waiting on " << *in << dendl;
     in->add_waiter(CInode::WAIT_UNFREEZE,
 		   new C_MDL_CheckMaxSize(this, in, new_max_size, new_size, new_mtime));
+    CDir *dir = in->get_parent_dir();
+    if (dir && dir->is_frozen()) {
+      dir->add_waiter(CDir::WAIT_UNFREEZE,
+		      new C_MDL_CheckMaxSize(this, in, new_max_size, new_size, new_mtime));
+    }
     return false;
   } else if (!force_wrlock && !in->filelock.can_wrlock(in->get_loner())) {
     // lock?
