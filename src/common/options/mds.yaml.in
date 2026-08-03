@@ -418,7 +418,7 @@ options:
 - name: mds_freeze_tree_timeout
   type: float
   level: dev
-  default: 10
+  default: 30
   services:
   - mds
   with_legacy: true
