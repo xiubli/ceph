@@ -369,6 +369,7 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
       diri->filelock.clear_scatter_wanted();
       diri->nestlock.clear_scatter_wanted();
     }
+    dir->state_clear(CDir::STATE_EXPORTING);
     dir->auth_unpin(this);
     break;
   case EXPORT_DISCOVERING:
