@@ -5659,7 +5659,14 @@ void CInode::queue_export_pin(mds_rank_t export_pin)
    * operations without any real benefit.  It will be re-queued
    * for export when children are added.
    */
-  if (queue && !dirfrags.empty()) {
+  if (queue && dirfrags.empty()) {
+    /*
+     * Newly created directory with no dirfrags opened yet:
+     * it is definitely empty, skip the export.
+     */
+    dout(10) << " skipping empty dir (no dirfrags) " << *this << dendl;
+    queue = false;
+  } else if (queue) {
     bool has_items = false;
     for (auto& p : dirfrags) {
       if (p.second->is_auth() && p.second->get_num_any()) {
