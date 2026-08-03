@@ -4957,7 +4957,11 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
 	 * is stale and we just clean it up.
 	 */
 	if (lock->get_state() == LOCK_SYNC_LOCK ||
-	    lock->get_state() == LOCK_SYNC_EXCL) {
+	    lock->get_state() == LOCK_SYNC_EXCL ||
+	    (lock->get_type() == CEPH_LOCK_DN &&
+	     (lock->get_state() == LOCK_XLOCK ||
+	      lock->get_state() == LOCK_LOCK_XLOCK ||
+	      lock->get_state() == LOCK_PREXLOCK))) {
 	  dout(7) << "handle_simple_lock " << *lock
 		  << " on " << *lock->get_parent() << " from "
 		  << from << ", last one" << dendl;
