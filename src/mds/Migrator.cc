@@ -369,7 +369,6 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
       diri->filelock.clear_scatter_wanted();
       diri->nestlock.clear_scatter_wanted();
     }
-    dir->state_clear(CDir::STATE_EXPORTING);
     dir->auth_unpin(this);
     break;
   case EXPORT_DISCOVERING:
@@ -1315,6 +1314,9 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     if (!mds->locker->acquire_locks(mdr, lov, nullptr, {}, true)) {
       if (mds->logger)
         mds->logger->inc(l_mds_export_authpin_fail);
+      if (!mdr->more()->waiting_on_peer.empty()) {
+        return;
+      }
       export_try_cancel(dir);
       return;
     }

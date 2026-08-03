@@ -4928,13 +4928,22 @@ void Locker::handle_reqrdlock(SimpleLock *lock, const cref_t<MLock> &m)
     if (parent->is_frozen()) {
       /*
        * Parent is frozen (subtree export): cannot process
-       * the REQRDLOCK now.  Add a WAIT_UNFREEZE waiter so
-       * the request is retried when the subtree is thawed.
+       * the REQRDLOCK now.  Add a WAIT_UNFREEZE waiter on
+       * the parent CDir so CDir::unfreeze_tree() will retry
+       * the request when the subtree is thawed.
        */
       dout(7) << "handle_reqrdlock parent frozen, will retry on "
               << *lock << " on " << *parent << dendl;
-      parent->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
-                         new C_MDS_RetryMessage(mds, m));
+      CDir *dir = nullptr;
+      if (CInode *in = dynamic_cast<CInode*>(parent)) {
+	dir = in->get_parent_dir();
+      } else if (CDentry *dn = dynamic_cast<CDentry*>(parent)) {
+	dir = dn->get_dir();
+      }
+      if (dir) {
+	dir->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			new C_MDS_RetryMessage(mds, m));
+      }
     } else {
       dout(7) << "handle_reqrdlock dropping rdlock request on " << *lock
               << " on " << *parent << dendl;

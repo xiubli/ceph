@@ -3337,7 +3337,30 @@ void Server::handle_peer_auth_pin(const MDRequestRef& mdr)
 	}
 	// wait
 	dout(10) << " waiting for authpinnable on " << *obj << dendl;
-	obj->add_waiter(CDir::WAIT_UNFREEZE, new C_MDS_RetryRequest(mdcache, mdr));
+	{
+	  CDir *wait_dir = nullptr;
+	  if (CInode *in = dynamic_cast<CInode*>(obj)) {
+	    if (in->is_frozen_inode() || in->is_frozen_auth_pin() ||
+	        in->is_freezing_inode()) {
+	      obj->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			      new C_MDS_RetryRequest(mdcache, mdr));
+	      mdr->drop_local_auth_pins();
+	      goto blocked;
+	    }
+	    wait_dir = in->get_parent_dir();
+	  } else if (CDentry *dn = dynamic_cast<CDentry*>(obj)) {
+	    wait_dir = dn->get_dir();
+	  } else {
+	    wait_dir = dynamic_cast<CDir*>(obj);
+	  }
+	  if (wait_dir) {
+	    wait_dir->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+				 new C_MDS_RetryRequest(mdcache, mdr));
+	  } else {
+	    obj->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			    new C_MDS_RetryRequest(mdcache, mdr));
+	  }
+	}
 	mdr->drop_local_auth_pins();
 	goto blocked;
       }
