@@ -3906,17 +3906,6 @@ CInode* Server::rdlock_path_pin_ref(const MDRequestRef& mdr,
   CInode *ref = mdr->in[0];
   dout(10) << "ref is " << *ref << dendl;
 
-  /*
-   * Drop the isnap/ipolicy rdlocks acquired during path traversal.
-   * They are only needed for the snapshot-layout walk; holding them
-   * for the full request lifetime (including OSD/journal operations
-   * on the auth, or peer communication on a replica) blocks
-   * LOCK_AC_LOCK gathers.  MDLog ordering guarantees consistency
-   * with mksnap/setlayout, so the rdlocks are not needed as a
-   * barrier after traversal completes.
-   */
-  mds->locker->drop_snap_rdlocks_for_replica(mdr.get());
-
   if (want_auth) {
     // auth_pin?
     //   do NOT proceed if freezing, as cap release may defer in that case, and
@@ -4021,12 +4010,6 @@ CDentry* Server::rdlock_path_xlock_dentry(const MDRequestRef& mdr,
   CDentry *dn = mdr->dn[0].back();
   CDir *dir = dn->get_dir();
   CInode *diri = dir->get_inode();
-
-  /*
-   * Drop the isnap/ipolicy rdlocks acquired during path traversal;
-   * see rdlock_path_pin_ref.
-   */
-  mds->locker->drop_snap_rdlocks_for_replica(mdr.get());
 
   if (!mdr->reqid.name.is_mds()) {
     if (diri->is_system() && !diri->is_root() &&
