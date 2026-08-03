@@ -660,11 +660,22 @@ void MDLockCache::detach_dirfrags()
   ceph_assert(items_dir);
   int i = 0;
   for (auto dir : auth_pinned_dirfrags) {
-    (void)dir;
+    /*
+     * Re-enable frozen inode now that the lock cache is detaching.
+     * This must be done here, not deferred to put_lock_cache(), because
+     * frozen_inode_suppressed blocks freeze_inode() and there can be
+     * an arbitrary delay between invalidation and the final put when
+     * the refcount drops to zero.  During that window any caller of
+     * freeze_inode() would fail and the WAIT_FROZEN callback would
+     * end up orphaned (maybe_finish_freeze_inode has already called
+     * finish_waiting before the callback is registered).
+     */
+    dir->enable_frozen_inode();
     items_dir[i].item_dir.remove_myself();
     ++i;
   }
   items_dir.reset();
+  auth_pinned_dirfrags.clear();
 }
 
 void MDLockCache::print(std::ostream& out) const {

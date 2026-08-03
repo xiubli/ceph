@@ -1117,9 +1117,8 @@ void Locker::put_lock_cache(MDLockCache* lock_cache)
   lock_cache->item_cap_lock_cache.remove_myself();
   lock_cache->detach_locks();
 
-  for (auto dir : lock_cache->auth_pinned_dirfrags) {
-    dir->enable_frozen_inode();
-  }
+  // auth_pinned_dirfrags already handled in detach_dirfrags()
+  ceph_assert(lock_cache->auth_pinned_dirfrags.empty());
 
   mds->queue_waiter(new C_MDL_DropCache(this, lock_cache));
 }
