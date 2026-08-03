@@ -4969,7 +4969,8 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
   switch (m->get_action()) {
     // -- replica --
   case LOCK_AC_SYNC:
-    ceph_assert(lock->get_state() == LOCK_LOCK);
+    ceph_assert(lock->get_state() == LOCK_LOCK ||
+                lock->get_state() == LOCK_SYNC_LOCK);
     lock->decode_locked_state(m->get_data());
     lock->set_state(LOCK_SYNC);
     lock->finish_waiters(SimpleLock::WAIT_RD|SimpleLock::WAIT_STABLE);
