@@ -29,10 +29,11 @@ void SimpleLock::try_clear_more() {
   }
 }
 
-void SimpleLock::get_xlock(MutationRef who, client_t client) { 
+void SimpleLock::get_xlock(MutationRef who, client_t client) {
   ceph_assert(!has_xlock_by());
   ceph_assert(state == LOCK_XLOCK || is_locallock() ||
-	      state == LOCK_LOCK /* if we are a peer */);
+	      state == LOCK_LOCK /* if we are a peer */ ||
+	      state == LOCK_SYNC_LOCK /* leader's replica still gathering */);
   parent->get(MDSCacheObject::PIN_LOCK);
   more()->num_xlock++;
   more()->xlock_by = who; 
