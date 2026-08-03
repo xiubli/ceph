@@ -5231,7 +5231,7 @@ void Locker::simple_xlock(SimpleLock *lock)
       invalidate_lock_caches(lock);
   }
 
-  if (in && in->is_head()) {
+  if (in && in->is_head() && lock->get_sm() == &sm_scatterlock) {
     if (in->issued_caps_need_gather(lock)) {
       issue_caps(in);
       gather++;
