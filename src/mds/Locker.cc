@@ -1043,6 +1043,58 @@ void Locker::handle_locks_for_early_reply(MutationImpl *mut)
   issue_caps_set(need_issue);
 }
 
+/*
+ * After path traversal completes, drop the isnap/ipolicy rdlocks
+ * acquired by try_rdlock_snap_layout.  These rdlocks are only needed
+ * during snapshot-layout traversal; holding them for the entire
+ * request lifetime (which includes OSD/journal operations on the
+ * auth, or peer communication on a replica) blocks LOCK_AC_LOCK
+ * gathers:
+ *
+ * On replicas:
+ *   replica holds isnap rdlock .......................
+ *   auth sends LOCK_AC_LOCK for isnap
+ *   replica transitions to sync->lock, can't ack (rdlock held)
+ *   auth waits for lockack
+ *   replica's request waits for auth response
+ *   -> deadlock until rdlock is released
+ *
+ * On the auth:
+ *   auth holds isnap rdlock .......................
+ *   simple_lock() -> gather++ (blocks for local rdlocks)
+ *   new requests fail to acquire isnap rdlock
+ *   -> stall until original request completes
+ *
+ * MDLog ordering guarantees consistency with mksnap/setlayout,
+ * so the rdlocks are not needed as a barrier after traversal
+ * completes.
+ */
+void Locker::drop_snap_rdlocks_for_replica(MutationImpl *mut)
+{
+  set<CInode*> need_issue;
+
+  dout(10) << __func__ << ": " << *mut << dendl;
+
+  for (auto it = mut->locks.begin(); it != mut->locks.end(); ) {
+    SimpleLock *lock = it->lock;
+    if (!it->is_rdlock()) {
+      ++it;
+      continue;
+    }
+    if (lock->get_type() != CEPH_LOCK_ISNAP &&
+	lock->get_type() != CEPH_LOCK_IPOLICY) {
+      ++it;
+      continue;
+    }
+    bool ni = false;
+    rdlock_finish(it++, mut, &ni);
+    if (ni)
+      need_issue.insert(static_cast<CInode*>(lock->get_parent()));
+  }
+
+  issue_caps_set(need_issue);
+}
+
 void Locker::drop_lock(MutationImpl* mut, SimpleLock* what)
 {
   dout(20) << __func__ << ": " << *what << dendl;
@@ -1120,7 +1172,19 @@ void Locker::put_lock_cache(MDLockCache* lock_cache)
   // auth_pinned_dirfrags already handled in detach_dirfrags()
   ceph_assert(lock_cache->auth_pinned_dirfrags.empty());
 
-  mds->queue_waiter(new C_MDL_DropCache(this, lock_cache));
+  /*
+   * Release cached locks immediately via drop_locks() instead of deferring
+   * to C_MDL_DropCache.  If the lock cache holds rdlocks that are blocking
+   * a lock state transition (e.g. LOCK_AC_LOCK on a replica waiting for
+   * rdlocks to be released before it can send lockack), the deferred cleanup
+   * can stall the transition for minutes while waiting on client cap revoke
+   * responses.  By releasing the locks synchronously here, the rdlocks are
+   * freed as soon as the lock cache ref drops to zero, unblocking any
+   * pending eval_gather().
+   */
+  drop_locks(lock_cache);
+  lock_cache->cleanup();
+  delete lock_cache;
 }
 
 void Locker::invalidate_lock_cache(MDLockCache *lock_cache)
@@ -4981,12 +5045,21 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
     lock->set_state(LOCK_SYNC_LOCK);
     if (lock->is_leased())
       revoke_client_leases(lock);
+    /*
+     * Invalidate lock caches before eval_gather: if the lock has
+     * cached rdlocks held by an MDLockCache, invalidate_lock_caches()
+     * will detach and invalidate them.  When put_lock_cache() eventually
+     * drops the ref to zero, it releases the rdlocks synchronously via
+     * drop_locks(), which calls rdlock_finish() and triggers another
+     * eval_gather().  This ordering ensures the gather can complete
+     * promptly instead of blocking until the client replies to a
+     * cap revoke.
+     */
+    if (lock->is_cached())
+      invalidate_lock_caches(lock);
     eval_gather(lock, true);
-    if (lock->is_unstable_and_locked()) {
-      if (lock->is_cached())
-	invalidate_lock_caches(lock);
+    if (lock->is_unstable_and_locked())
       mds->mdlog->flush();
-    }
     break;
 
 

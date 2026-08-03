@@ -820,7 +820,18 @@ void CDir::try_remove_dentries_for_stray()
     CDentry *dn = p->second;
     ++p;
     if (dn->last == CEPH_NOSNAP) {
-      ceph_assert(!dn->is_projected());
+      /*
+       * If the dentry is projected, there is an in-flight mutation
+       * (e.g. rename/unlink) that is modifying it. The mutation may
+       * be blocked on a lock state transition (e.g. isnap sync->lock
+       * waiting for a replica rdlock). Skip it for now; when the
+       * mutation completes it will clean up the dentry itself, or a
+       * later call to try_remove_dentries_for_stray will handle it.
+       */
+      if (dn->is_projected()) {
+        dout(10) << "stray dentry projected; skipping" << dendl;
+        continue;
+      }
       if (!dn->get_linkage()->is_null()) {
 		dout(10) << "stray dentry no longer null; skipping" << dendl;
 		continue;
@@ -839,7 +850,11 @@ void CDir::try_remove_dentries_for_stray()
 	dn->state_set(CDentry::STATE_BOTTOMLRU);
       }
     } else {
-      ceph_assert(!dn->is_projected());
+      // see comment above about projected stray dentries
+      if (dn->is_projected()) {
+        dout(10) << "stray dentry projected; skipping" << dendl;
+        continue;
+      }
       CDentry::linkage_t *dnl= dn->get_linkage();
       CInode *in = nullptr;
       if (dnl->is_primary()) {
