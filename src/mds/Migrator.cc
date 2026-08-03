@@ -2682,11 +2682,21 @@ void Migrator::handle_export_discover(const cref_t<MExportDirDiscover> &m, bool 
         return;
       } else {
         dout(7) << "failed to discover or not dir " << m->get_path() << ", NAK" << dendl;
-        ceph_abort();    // this shouldn't happen if the auth pins its path properly!!!!
       }
+      mds->send_message_mds(make_message<MExportDirDiscoverAck>(df, m->get_tid(), false), from);
+      return;
     }
 
-    ceph_abort(); // this shouldn't happen; the get_inode above would have succeeded.
+    /*
+     * Path traverse succeeded (r == 0) but no inode found.
+     * This can happen in the no-subtreemap world when the replica
+     * dn state is incomplete.  NAK the discover so the auth
+     * cancels the export gracefully.
+     */
+    dout(7) << "path traverse succeeded but no inode for "
+            << m->get_path() << ", NAK" << dendl;
+    mds->send_message_mds(make_message<MExportDirDiscoverAck>(df, m->get_tid(), false), from);
+    return;
   }
 
   // yay

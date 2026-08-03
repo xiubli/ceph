@@ -523,7 +523,31 @@ bool Locker::acquire_locks(const MDRequestRef& mdr,
       if (CDentry* dn = dynamic_cast<CDentry*>(object)) {
         dout(10) << " can't auth_pin dir: " << *dn->get_dir() << dendl;
       }
-      object->add_waiter(MDSCacheObject::WAIT_UNFREEZE, new C_MDS_RetryRequest(mdcache, mdr));
+      /*
+       * When the subtree is being exported, add the unfreeze
+       * waiter to the parent directory (CDir) rather than to
+       * the object itself (CInode/CDentry).  CDir::unfreeze_tree()
+       * only processes CDir-level WAIT_UNFREEZE waiters; CInode
+       * and CDentry waiters would never be woken.
+       */
+      if (err == MDSCacheObject::ERR_EXPORTING_TREE) {
+	CDir *dir = nullptr;
+	if (CInode *in = dynamic_cast<CInode*>(object)) {
+	  dir = in->get_projected_parent_dir();
+	} else if (CDentry *dn = dynamic_cast<CDentry*>(object)) {
+	  dir = dn->get_dir();
+	}
+	if (dir) {
+	  dir->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			  new C_MDS_RetryRequest(mdcache, mdr));
+	} else {
+	  object->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			     new C_MDS_RetryRequest(mdcache, mdr));
+	}
+      } else {
+	object->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			   new C_MDS_RetryRequest(mdcache, mdr));
+      }
 
       return false;
     }
