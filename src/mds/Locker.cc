@@ -242,7 +242,22 @@ bool Locker::try_rdlock_snap_layout(CInode *in, const MDRequestRef& mdr,
 	  dout(20) << " got rdlock on " << t->snaplock << " " << *t << dendl;
 	} else {
 	  err = "failed to acquire snap lock"sv;
-	  t->snaplock.add_waiter(SimpleLock::WAIT_RD, new C_MDS_RetryRequest(mdcache, mdr));
+	  t->snaplock.add_waiter(SimpleLock::WAIT_RD,
+			 new C_MDS_RetryRequest(mdcache, mdr));
+	  /*
+	   * If the parent directory is frozen (e.g. subtree
+	   * export in progress), the auth MDS may have
+	   * silently dropped our LOCK_AC_REQRDLOCK.
+	   * Add a WAIT_UNFREEZE waiter so that the request
+	   * is retried when the subtree is thawed.
+	   */
+	  if (t->is_frozen()) {
+	    CDir *dir = t->get_parent_dir();
+	    if (dir) {
+	      dir->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+			      new C_MDS_RetryRequest(mdcache, mdr));
+	    }
+	  }
 	  goto failed;
 	}
       }
