@@ -5652,6 +5652,26 @@ void CInode::queue_export_pin(mds_rank_t export_pin)
     if (queue)
       break;
   }
+  /*
+   * Do not export newly-created, still-empty directories.  An
+   * empty directory carries no load and exporting it immediately
+   * only freezes the subtree briefly, blocking concurrent
+   * operations without any real benefit.  It will be re-queued
+   * for export when children are added.
+   */
+  if (queue && !dirfrags.empty()) {
+    bool has_items = false;
+    for (auto& p : dirfrags) {
+      if (p.second->is_auth() && p.second->get_num_any()) {
+        has_items = true;
+        break;
+      }
+    }
+    if (!has_items) {
+      dout(10) << " skipping empty dir " << *this << dendl;
+      queue = false;
+    }
+  }
   if (queue) {
     state_set(CInode::STATE_QUEUEDEXPORTPIN);
     mdcache->export_pin_queue.insert(this);
