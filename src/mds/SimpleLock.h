@@ -397,7 +397,8 @@ public:
   bool can_xlock(client_t client) const {
     return get_sm()->states[state].can_xlock == ANY ||
       (get_sm()->states[state].can_xlock == AUTH && parent->is_auth()) ||
-      (get_sm()->states[state].can_xlock == XCL && client >= 0 && get_xlock_by_client() == client);
+      (get_sm()->states[state].can_xlock == XCL && client >= 0 && get_xlock_by_client() == client) ||
+      (get_sm() == &sm_simplelock && parent->is_auth());
   }
 
   // rdlock
