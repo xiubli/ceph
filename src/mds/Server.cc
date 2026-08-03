@@ -3439,8 +3439,19 @@ void Server::handle_peer_auth_pin_ack(const MDRequestRef& mdr, const cref_t<MMDS
   mds_rank_t from = mds_rank_t(ack->get_source().num());
 
   if (ack->is_req_blocked()) {
-    // peer auth pin is blocked, drop locks to avoid deadlock
-    mds->locker->drop_locks(mdr.get(), nullptr);
+    /*
+     * The peer cannot complete the authpin right now (e.g. freeze
+     * is waiting for auth_pins to drop), but will retry and send
+     * an unblocked ack once the condition clears.  Do NOT drop
+     * locks here: the blocked ack is a transient condition and
+     * the request's locks are still valid for the upcoming retry.
+     * Dropping locks forces an expensive full restart (path
+     * traversal, lock acquisition) when the unblocked ack arrives.
+     * The blocked ack path only returns without clearing
+     * waiting_on_peer, so the request stays in the authpin phase
+     * until the unblocked ack from the peer completes it.
+     */
+    dout(10) << " peer authpin blocked, waiting for unblocked ack" << dendl;
     return;
   }
 
