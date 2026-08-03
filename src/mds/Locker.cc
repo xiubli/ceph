@@ -1066,10 +1066,7 @@ void Locker::put_lock_cache(MDLockCache* lock_cache)
   lock_cache->item_cap_lock_cache.remove_myself();
   lock_cache->detach_locks();
 
-  CInode *diri = lock_cache->get_dir_inode();
   for (auto dir : lock_cache->auth_pinned_dirfrags) {
-    if (dir->get_inode() != diri)
-      continue;
     dir->enable_frozen_inode();
   }
 
@@ -1259,8 +1256,6 @@ void Locker::create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layou
   for (auto dir : dfv) {
     // prevent subtree migration
     lock_cache->auth_pin(dir);
-    // prevent frozen inode
-    dir->disable_frozen_inode();
   }
 
   for (auto& p : mdr->object_states) {
@@ -1282,6 +1277,21 @@ void Locker::create_lock_cache(const MDRequestRef& mdr, CInode *diri, file_layou
       ceph_assert(0 == "unknown type of lock parent");
     }
   }
+
+  /*
+   * Disable frozen inode on all collected dirfrags.  Use a set to
+   * ensure each dir is processed exactly once even if it appears
+   * multiple times in dfv (e.g. from both the initial dirfrags and
+   * the ancestor traversal).
+   */
+  {
+    std::set<CDir *> seen;
+    for (auto dir : dfv) {
+      if (seen.insert(dir).second)
+        dir->disable_frozen_inode();
+    }
+  }
+
   lock_cache->attach_dirfrags(std::move(dfv));
 
   for (auto it = mdr->locks.begin(); it != mdr->locks.end(); ) {
