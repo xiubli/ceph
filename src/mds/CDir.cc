@@ -1471,7 +1471,7 @@ void CDir::mark_dirty(LogSegmentRef const& ls, version_t pv)
     ceph_assert(get_version() < pv);
     ceph_assert(pv <= projected_version);
     ceph_assert(!projected_fnode.empty() &&
-	        pv <= projected_fnode.front()->version);
+	        pv <= projected_fnode.back()->version);
   }
 
   _mark_dirty(ls);
