@@ -4866,18 +4866,37 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
 
     // -- auth --
   case LOCK_AC_LOCKACK:
-    ceph_assert(lock->get_state() == LOCK_SYNC_LOCK ||
-	   lock->get_state() == LOCK_SYNC_EXCL);
-    ceph_assert(lock->is_gathering(from));
-    lock->remove_gather(from);
-    
-    if (lock->is_gathering()) {
-      dout(7) << "handle_simple_lock " << *lock << " on " << *lock->get_parent() << " from " << from
-	      << ", still gathering " << lock->get_gather_set() << dendl;
-    } else {
-      dout(7) << "handle_simple_lock " << *lock << " on " << *lock->get_parent() << " from " << from
-	      << ", last one" << dendl;
-      eval_gather(lock);
+    if (lock->is_gathering(from)) {
+      lock->remove_gather(from);
+      if (!lock->is_gathering()) {
+	/*
+	 * Only call eval_gather when the lock is still in an
+	 * intermediate gathering state.  The lock may already
+	 * have progressed past LOCK_SYNC_LOCK/EXCL (e.g. into
+	 * LOCK_XLOCK) when we skipped the gather in xlock_start
+	 * for a simplelock, or when a dentry lock xlock raced
+	 * with the gather completion.  In that case the gather
+	 * is stale and we just clean it up.
+	 */
+	if (lock->get_state() == LOCK_SYNC_LOCK ||
+	    lock->get_state() == LOCK_SYNC_EXCL) {
+	  dout(7) << "handle_simple_lock " << *lock
+		  << " on " << *lock->get_parent() << " from "
+		  << from << ", last one" << dendl;
+	  eval_gather(lock);
+	} else {
+	  dout(7) << "handle_simple_lock " << *lock
+		  << " on " << *lock->get_parent() << " from "
+		  << from << ", last gather but state already "
+		  << lock->get_state_name(lock->get_state())
+		  << ", skipping eval_gather" << dendl;
+	}
+      } else {
+	dout(7) << "handle_simple_lock " << *lock
+		<< " on " << *lock->get_parent() << " from "
+		<< from << ", still gathering "
+		<< lock->get_gather_set() << dendl;
+      }
     }
     break;
 
