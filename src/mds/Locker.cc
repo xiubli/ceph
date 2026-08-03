@@ -251,11 +251,20 @@ bool Locker::try_rdlock_snap_layout(CInode *in, const MDRequestRef& mdr,
 	   * Add a WAIT_UNFREEZE waiter so that the request
 	   * is retried when the subtree is thawed.
 	   */
-	  if (t->is_frozen()) {
-	    CDir *dir = t->get_parent_dir();
-	    if (dir) {
-	      dir->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
-			      new C_MDS_RetryRequest(mdcache, mdr));
+	  {
+	    CDentry *p = t->get_projected_parent_dn();
+	    CInode *a = t;
+	    while (a) {
+	      if (a->is_frozen()) {
+		CDir *d = a->get_parent_dir();
+		if (d) {
+		  d->add_waiter(MDSCacheObject::WAIT_UNFREEZE,
+				new C_MDS_RetryRequest(mdcache, mdr));
+		  break;
+		}
+	      }
+	      p = a->get_projected_parent_dn();
+	      a = p ? p->get_dir()->get_inode() : nullptr;
 	    }
 	  }
 	  goto failed;
