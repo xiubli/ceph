@@ -345,7 +345,16 @@ bool MDRequestImpl::freeze_auth_pin(CInode *inode)
   more()->rename_inode = inode;
   more()->is_freeze_authpin = true;
   auth_pin(inode);
-  if (!inode->freeze_inode(1)) {
+  /*
+   * Use the current auth_pins count as the allowance so
+   * freeze_inode succeeds immediately even when concurrent
+   * operations still hold auth_pins.  Setting STATE_FREEZING
+   * blocks new auth_pins; existing ones drain asynchronously.
+   * The authpin itself prevents inode migration while the
+   * rename is in flight, so waiting for auth_pins to drain
+   * before sending the ack is unnecessary.
+   */
+  if (!inode->freeze_inode(inode->get_num_auth_pins())) {
     return false;
   }
   inode->freeze_auth_pin();
