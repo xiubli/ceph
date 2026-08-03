@@ -620,15 +620,27 @@ bool Locker::acquire_locks(const MDRequestRef& mdr,
   // request remote auth_pins
   if (!mustpin_remote.empty()) {
     marker.message = "requesting remote authpins";
+    /*
+     * Remove already-remote-authpinned objects from mustpin_remote.
+     * Without this, each re-dispatch of the request re-adds the same
+     * objects, sending duplicate authpin requests and preventing
+     * waiting_on_peer from ever becoming empty.
+     */
     for (const auto& p : mdr->object_states) {
       if (p.second.remote_auth_pinned == MDS_RANK_NONE)
 	continue;
-      ceph_assert(p.second.remote_auth_pinned == p.first->authority().first);
       auto q = mustpin_remote.find(p.second.remote_auth_pinned);
       if (q != mustpin_remote.end())
-	q->second.insert(p.first);
+	q->second.erase(p.first);
     }
-
+    // drop ranks that became empty after removing already-pinned objects
+    for (auto it = mustpin_remote.begin(); it != mustpin_remote.end(); ) {
+      if (it->second.empty())
+	it = mustpin_remote.erase(it);
+      else
+	++it;
+    }
+    if (!mustpin_remote.empty()) {
     for (auto& p : mustpin_remote) {
       dout(10) << "requesting remote auth_pins from mds." << p.first << dendl;
 
@@ -664,6 +676,7 @@ bool Locker::acquire_locks(const MDRequestRef& mdr,
       ceph_assert(ret.second);
     }
     return false;
+    } // !mustpin_remote after removal
   }
 
   // caps i'll need to issue
