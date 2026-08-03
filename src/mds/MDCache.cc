@@ -3109,10 +3109,9 @@ void MDCache::handle_mds_failure(mds_rank_t who)
       if (mdr->more()->waiting_on_peer.count(who)) {
 	dout(10) << " leader request " << *mdr << " waiting for peer mds." << who
 		 << " to recover" << dendl;
-	// retry request when peer recovers
 	mdr->more()->waiting_on_peer.erase(who);
 	if (mdr->more()->waiting_on_peer.empty())
-	  mds->wait_for_active_peer(who, new C_MDS_RetryRequest(this, mdr));
+	  mds->queue_waiter(new C_MDS_RetryRequest(this, mdr));
       }
 
       if (mdr->locking && mdr->locking_target_mds == who)
