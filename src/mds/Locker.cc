@@ -2243,6 +2243,28 @@ bool Locker::xlock_start(SimpleLock *lock, const MDRequestRef& mut)
       if (lock->get_state() == LOCK_LOCK || lock->get_state() == LOCK_XLOCKDONE) {
 	mut->start_locking(lock);
 	simple_xlock(lock);
+      } else if (lock->get_sm() == &sm_simplelock && lock->get_state() == LOCK_SYNC) {
+	/*
+	 * For simplelock in SYNC state on auth MDS we must skip the
+	 * ordinary simple_lock gather (rdlock/caps/replication) to
+	 * avoid deadlock. The calling request may itself hold rdlocks
+	 * on this lock acquired during path traversal, which would
+	 * prevent the gather from ever completing.  Instead we initiate
+	 * the lock transition to LOCK directly: send the replica
+	 * message, complete to LOCK, and proceed to simple_xlock.
+	 */
+	mut->start_locking(lock);
+	if (lock->get_parent()->is_replicated() &&
+	    lock->get_sm()->states[LOCK_SYNC].replica_state != LOCK_LOCK) {
+	  lock->set_state(LOCK_SYNC_LOCK);
+	  send_lock_message(lock, LOCK_AC_LOCK);
+	}
+	lock->set_state(LOCK_LOCK);
+	/*
+	 * simple_xlock does auth_pin for stable locks (LOCK_LOCK is
+	 * stable); we are skipping simple_xlock so must do it here.
+	 */
+	lock->get_parent()->auth_pin(lock);
       } else {
 	simple_lock(lock);
       }
