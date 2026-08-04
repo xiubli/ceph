@@ -50,11 +50,20 @@ void SimpleLock::set_xlock_done() {
 }
 
 void SimpleLock::put_xlock() {
+  // On a replica (non-auth parent), the lock state may transition
+  // independently of this xlock because the auth MDS controls scatter/
+  // gather.  Allow transitional states (LOCK_SYNC_LOCK, etc.) so that
+  // request_drop_remote_locks can release a remote xlock while the
+  // lock is e.g. sync->lock.
   ceph_assert(state == LOCK_XLOCK || state == LOCK_XLOCKDONE ||
-	      state == LOCK_XLOCKSNAP || state == LOCK_LOCK_XLOCK ||
-	      state == LOCK_LOCK  || /* if we are a leader of a peer */
-	      state == LOCK_PREXLOCK || state == LOCK_SYNC ||
-	      is_locallock());
+              state == LOCK_XLOCKSNAP || state == LOCK_LOCK_XLOCK ||
+              state == LOCK_LOCK  || /* if we are a leader of a peer */
+              state == LOCK_PREXLOCK || state == LOCK_SYNC ||
+              state == LOCK_SYNC_LOCK || state == LOCK_SYNC_MIX ||
+              state == LOCK_SYNC_MIX2 || state == LOCK_MIX_LOCK ||
+              state == LOCK_MIX_LOCK2 || state == LOCK_MIX_SYNC ||
+              state == LOCK_MIX_SYNC2 ||
+              is_locallock());
   --more()->num_xlock;
   parent->put(MDSCacheObject::PIN_LOCK);
   if (more()->num_xlock == 0) {

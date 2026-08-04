@@ -1336,6 +1336,16 @@ void MDSRank::_advance_queues()
       finished_queue.pop_front();
 
       dout(10) << " finish " << fin << dendl;
+      // Sanity check: fin must be a valid heap pointer.  A value
+      // like 0x2 indicates memory corruption (use-after-free or
+      // a stale elist item that was misinterpreted as a pointer).
+      // Catch this early to get a clear diagnostic.
+      if (unlikely(reinterpret_cast<uintptr_t>(fin) < 4096)) {
+        derr << "BUG: corrupted context pointer " << fin
+             << " in finished_queue (size=" << finished_queue.size() << ")"
+             << dendl;
+        ceph_abort_msg("corrupted MDSContext ptr in finished_queue");
+      }
       fin->complete(0);
 
       heartbeat_reset();

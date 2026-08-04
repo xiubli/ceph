@@ -2345,7 +2345,12 @@ void MDCache::predirty_journal_parents(MutationRef mut, EMetaBlob *blob,
   bool first = true;
   while (parent) {
     //assert(cur->is_auth() || !primary_dn);  // this breaks the rename auth twiddle hack
-    ceph_assert(parent->is_auth());
+    // With no-subtreemap, the parent dirfrag may have been exported to
+    // another MDS while the child inode is still auth here.  Stop
+    // walking at the first non-auth ancestor: the auth MDS for that
+    // dirfrag is responsible for journaling its fragstat/rstat updates.
+    if (!parent->is_auth())
+      break;
     
     // opportunistically adjust parent dirfrag
     CInode *pin = parent->get_inode();
