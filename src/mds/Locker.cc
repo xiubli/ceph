@@ -1217,16 +1217,18 @@ void Locker::invalidate_lock_cache(MDLockCache *lock_cache)
     cap->clear_lock_cache_allowed(cap_bit);
     if (cap->issued() & cap_bit) {
       issue_caps(lock_cache->get_dir_inode(), cap);
-    } else {
-      cap = nullptr;
+      return;
     }
-  } else {
-    lock_cache->item_cap_lock_cache.remove_myself();
-    lock_cache->client_cap = nullptr;
-    if (!lock_cache->cap_waiters.empty())
-      mds->queue_waiters(lock_cache->cap_waiters);
-    put_lock_cache(lock_cache);
   }
+
+  // cap is gone or the relevant cap bit has already been revoked:
+  // remove the lock cache from the Capability's list so that the
+  // Capability can be safely destroyed later (e.g. during export).
+  lock_cache->item_cap_lock_cache.remove_myself();
+  lock_cache->client_cap = nullptr;
+  if (!lock_cache->cap_waiters.empty())
+    mds->queue_waiters(lock_cache->cap_waiters);
+  put_lock_cache(lock_cache);
 }
 
 void Locker::eval_lock_caches(Capability *cap)
