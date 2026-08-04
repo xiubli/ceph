@@ -9021,9 +9021,14 @@ bool Server::_dir_is_nonempty(const MDRequestRef& mdr, CInode *in)
   frag_info_t dirstat;
   version_t dirstat_version = in->get_projected_inode()->dirstat.version;
 
+  bool has_non_auth = false;
   auto&& ls = in->get_dirfrags();
   for (const auto& dir : ls) {
     const auto& pf = dir->get_projected_fnode();
+    if (!dir->is_auth()) {
+      has_non_auth = true;
+      continue;
+    }
     if (pf->fragstat.size()) {
       dout(10) << "dir_is_nonempty dirstat has "
 	       << pf->fragstat.size() << " items " << *dir << dendl;
@@ -9036,7 +9041,10 @@ bool Server::_dir_is_nonempty(const MDRequestRef& mdr, CInode *in)
       dirstat.add(pf->fragstat);
   }
 
-  return dirstat.size() != in->get_projected_inode()->dirstat.size();
+  if (!has_non_auth)
+    return dirstat.size() != in->get_projected_inode()->dirstat.size();
+
+  return false;
 }
 
 
@@ -10229,7 +10237,11 @@ void Server::handle_peer_rename_prep(const MDRequestRef& mdr)
 			    mdr->peer_to_mds, true);
     return;
   }
-  ceph_assert(r == 0);  // we shouldn't get an error here!
+  if (r < 0) {
+    dout(7) << " dest path_traverse failed with " << r << ", retrying" << dendl;
+    mds->queue_waiter(new C_MDS_RetryRequest(mdcache, mdr));
+    return;
+  }
       
   CDentry *destdn = trace.back();
   CDentry::linkage_t *destdnl = destdn->get_projected_linkage();
@@ -10244,7 +10256,11 @@ void Server::handle_peer_rename_prep(const MDRequestRef& mdr)
 			     MDS_TRAVERSE_DISCOVER | MDS_TRAVERSE_PATH_LOCKED,
 			     &trace, &srci);
   if (r > 0) return;
-  ceph_assert(r == 0);
+  if (r < 0) {
+    dout(7) << " src path_traverse failed with " << r << ", retrying" << dendl;
+    mds->queue_waiter(new C_MDS_RetryRequest(mdcache, mdr));
+    return;
+  }
 
   CDentry *srcdn = trace.back();
   CDentry::linkage_t *srcdnl = srcdn->get_projected_linkage();
