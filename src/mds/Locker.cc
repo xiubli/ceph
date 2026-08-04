@@ -300,6 +300,21 @@ bool Locker::try_rdlock_snap_layout(CInode *in, const MDRequestRef& mdr,
 
   mdr->dir_root[n] = root;
   mdr->dir_depth[n] = depth;
+
+  /*
+   * Release isnap/ipolicy rdlocks immediately: they were acquired only
+   * for the snaprealm walk.  Holding them for the full request lifetime
+   * blocks LOCK_AC_LOCK gathers.  The MDS is single-threaded so the
+   * snaprealm state cannot change between consecutive calls within a
+   * single path_traverse (eliminating the consistency concern with
+   * dropping between different try_rdlock_snap_layout calls).
+   *
+   * Done here rather than at every call site so all 8 callers
+   * (path_traverse, handle_client_setlayout, Migrator, etc.)
+   * benefit.
+   */
+  drop_snap_rdlocks_for_replica(mdr.get());
+
   return true;
 
 failed:
