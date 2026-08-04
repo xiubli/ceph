@@ -1483,6 +1483,14 @@ void CDir::mark_dirty(LogSegmentRef const& ls, version_t pv)
   ceph_assert(is_auth());
 
   if (pv) {
+    if (unlikely(get_version() >= pv)) {
+      derr << __func__ << ": BUG: version already advanced, "
+           << "get_version()=" << get_version() << " pv=" << pv
+           << " projected_version=" << projected_version
+           << " projected_fnode.size()=" << projected_fnode.size()
+           << " " << *this << dendl;
+      ceph_assert(get_version() < pv);
+    }
     ceph_assert(get_version() < pv);
     ceph_assert(pv <= projected_version);
     ceph_assert(!projected_fnode.empty() &&
