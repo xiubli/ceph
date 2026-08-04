@@ -294,6 +294,16 @@ void Migrator::find_stale_export_freeze()
     if (stat.state == EXPORT_CANCELLED || stat.state >= EXPORT_NOTIFYING)
       continue;
 
+    // The state may not be in history if the export was recovered
+    // from journal replay without a proper set_state() call, or if
+    // the state was modified without going through the state machine.
+    // Treat such entries as if they just entered their current state.
+    if (!stat.state_history.count(stat.state)) {
+      dout(3) << __func__ << " no history for state " << stat.state
+              << " on " << *dir << ", recording start time now" << dendl;
+      stat.state_history[stat.state] = std::make_pair(now, 0.0);
+    }
+
     // Exports stuck in EXPORT_LOCKING (e.g. can't acquire snaplock
     // because of concurrent operations) won't have freeze_tree_state
     // yet, but still need to be cancelled if they run too long.
