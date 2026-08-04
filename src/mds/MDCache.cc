@@ -5118,7 +5118,7 @@ public:
 
 void MDCache::rejoin_reconnect_inode_finish(inodeno_t ino, int r)
 {
-  static std::vector<inodeno_t> failed;
+  std::vector<inodeno_t> failed;
   if (r < 0) {
     derr << "failed to reconnect subtree parent ino(" << ino << ") err=" << r << dendl;
     failed.push_back(ino);
@@ -5129,11 +5129,11 @@ void MDCache::rejoin_reconnect_inode_finish(inodeno_t ino, int r)
     return;
 
   if (!failed.empty()) {
-    derr << "failed to reconnect subtree parent inos:" << r << dendl;
+    derr << "failed to reconnect subtree parent inos:" << dendl;
     for (auto &ino : failed)
-      derr << "" << ino << dendl;
-    mds->clog->error() << "failed to reconnect subtrees";
-    return;
+      derr << "  ino " << ino << dendl;
+    mds->clog->warn() << "failed to reconnect " << failed.size()
+                       << " subtree(s); continuing rejoin (see cluster log for details)";
   }
 
   subtrees_connected = true;
