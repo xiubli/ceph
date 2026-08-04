@@ -6017,6 +6017,10 @@ bool MDCache::open_undef_inodes_dirfrags()
     ceph_assert(dir->get_version() == 0);
     fetch_queue.emplace(std::piecewise_construct, std::make_tuple(dir), std::make_tuple());
   }
+  // Clear the global lists now so that a synchronous fetch callback
+  // (e.g. for an already-complete dirfrag above) does not re-enter
+  // open_undef_inodes_dirfrags and re-process the same entries.
+  rejoin_undef_dirfrags.clear();
 
   if (g_conf().get_val<bool>("mds_dir_prefetch")) {
     for (auto& in : rejoin_undef_inodes) {
