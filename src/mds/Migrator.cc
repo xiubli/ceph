@@ -3611,6 +3611,28 @@ void Migrator::import_finish(CDir *dir, import_state_t& stat, bool last)
     stat.mut.reset();
   }
 
+  // Kick any pending lock waiters on imported inodes. During the
+  // import process, waiters may have been added while the inode was
+  // still a replica (e.g. rdlock_start -> WAIT_STABLE). Now that
+  // we're auth, re-trigger them so they can acquire locks locally.
+  {
+    MDSContext::vec finishers;
+    for (auto& p : stat.peer_exports) {
+      CInode *in = p.first;
+      if (in->is_auth()) {
+        in->filelock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->authlock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->linklock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->xattrlock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->nestlock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->dirfragtreelock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->snaplock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+        in->policylock.take_waiting(SimpleLock::WAIT_RD | SimpleLock::WAIT_STABLE, finishers);
+      }
+    }
+    finish_contexts(g_ceph_context, finishers);
+  }
+
   // re-eval imported caps
   for (auto& p : stat.peer_exports) {
     if (p.first->is_auth())
