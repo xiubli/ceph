@@ -1589,6 +1589,37 @@ void CDir::last_put()
 
 // -----------------------
 // FETCH
+
+/*
+ * Wrapper context for CDir::fetch(): if export_dir_distributed succeeds,
+ * forward the result to the original context. If the export fails (e.g.
+ * because the inode's ifile is in EXCL loner state and the wrlock cannot
+ * be acquired), fall back to a direct _omap_fetch / fetch_keys from RADOS
+ * instead of retrying the entire client request. This breaks the infinite
+ * retry loop: export → lock fail → cancel → retry → export → ...
+ */
+class C_CDir_FetchExportFallback : public MDSInternalContext {
+  CDir *dir;
+  std::string dname;
+  snapid_t last;
+  MDSContext *fin;
+public:
+  C_CDir_FetchExportFallback(CDir *d, std::string_view dn, snapid_t l,
+                             MDSContext *f)
+    : MDSInternalContext(d->mdcache->mds),
+      dir(d), dname(dn), last(l), fin(f) {}
+  void finish(int r) override {
+    if (r == 0) {
+      fin->complete(0);
+    } else {
+      // export failed, fall back to direct fetch from RADOS.
+      // ignore_authpinnability=true bypasses the export_dir_distributed
+      // check and goes straight to _omap_fetch / fetch_keys.
+      dir->fetch(dname, last, fin, true);
+    }
+  }
+};
+
 void CDir::fetch(std::string_view dname, snapid_t last,
 		 MDSContext *c, bool ignore_authpinnability)
 {
@@ -1634,7 +1665,9 @@ void CDir::fetch(std::string_view dname, snapid_t last,
   if (!ignore_authpinnability &&
       !is_any_fetching() &&
       !inode->is_system() &&
-      mdcache->export_dir_distributed(this, c)) {
+      c &&
+      mdcache->export_dir_distributed(
+          this, new C_CDir_FetchExportFallback(this, dname, last, c))) {
     dout(7) << "distributing empty dirfrag, waiting" << dendl;
     return;
   }

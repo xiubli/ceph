@@ -4264,7 +4264,26 @@ CDir* Server::try_get_complete_dirfrag(CInode *diri, frag_t fg, const MDRequestR
       return nullptr;
     }
 
-    auto c =  new C_MDS_RetryRequest(mdcache, mdr);
+    // Wrap with fallback: if export_dir_distributed fails (e.g. ifile
+    // EXCL loner prevents wrlock), fall back to direct RADOS fetch
+    // instead of retrying the entire request, which would loop forever.
+    class C_ExportDirFallback : public MDSInternalContext {
+      CDir *dir;
+      MDSContext *fin;
+     public:
+      C_ExportDirFallback(CDir *d, MDSContext *f)
+	: MDSInternalContext(d->mdcache->mds), dir(d), fin(f) {}
+      void finish(int r) override {
+	if (r == 0) {
+	  fin->complete(0);
+	} else {
+	  dir->fetch(std::string_view(), CEPH_NOSNAP, fin, true);
+	}
+      }
+    };
+
+    auto c = new C_ExportDirFallback(dir,
+		     new C_MDS_RetryRequest(mdcache, mdr));
 
     if (!diri->is_system() &&
 	!dir->is_any_fetching() &&
