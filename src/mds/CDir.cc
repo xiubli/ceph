@@ -3659,8 +3659,16 @@ void CDir::maybe_finish_freeze()
   }
 
   if (freeze_tree_state) {
-    if (freeze_tree_state->frozen ||
-	freeze_tree_state->auth_pins != 1)
+    if (freeze_tree_state->frozen) {
+      // freeze already completed (e.g. freeze_tree returned true
+      // synchronously for an empty dir), but WAIT_FROZEN waiters
+      // may still be pending if they were registered before the
+      // synchronous completion.  Finish them now so that the
+      // export or other freeze-dependent operation can proceed.
+      finish_waiting(WAIT_FROZEN);
+      return;
+    }
+    if (freeze_tree_state->auth_pins != 1)
       return;
 
     if (freeze_tree_state->dir != this) {

@@ -1380,9 +1380,13 @@ void Migrator::dispatch_export_dir(const MDRequestRef& mdr, int count)
     total_exporting_size += it->second.approx_size;
 
     // start the freeze, but hold it up with an auth_pin.
+    // Add the WAIT_FROZEN waiter *before* freeze_tree so that it
+    // is already registered if freeze_tree completes synchronously
+    // (e.g. empty dir or after restart, when is_freezeable(true)
+    // returns true and _freeze_tree is called immediately).
+    dir->add_waiter(MDSCacheObject::WAIT_FROZEN,
+                    new C_MDC_ExportFreeze(this, dir, it->second.tid));
     dir->freeze_tree(it->second.recursive);
-    ceph_assert(dir->is_freezing_tree());
-    dir->add_waiter(MDSCacheObject::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
     return;
   }
 
