@@ -257,22 +257,30 @@ class MDSRank {
     void update_mlogger();
 
     void queue_waiter(MDSContext *c) {
+      ceph_assert(c != nullptr);
       finished_queue.push_back(c);
       progress_thread.signal();
     }
     void queue_waiter_front(MDSContext *c) {
+      ceph_assert(c != nullptr);
       finished_queue.push_front(c);
       progress_thread.signal();
     }
     void queue_waiters(std::vector<MDSContext*>& ls) {
       std::vector<MDSContext*> v;
       v.swap(ls);
+      for (auto c : v) {
+        ceph_assert(c != nullptr);
+      }
       std::copy(v.begin(), v.end(), std::back_inserter(finished_queue));
       progress_thread.signal();
     }
     void queue_waiters_front(std::vector<MDSContext*>& ls) {
       std::vector<MDSContext*> v;
       v.swap(ls);
+      for (auto c : v) {
+        ceph_assert(c != nullptr);
+      }
       std::copy(v.rbegin(), v.rend(), std::front_inserter(finished_queue));
       progress_thread.signal();
     }
