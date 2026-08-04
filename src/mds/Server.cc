@@ -10279,7 +10279,7 @@ void Server::handle_peer_rename_prep(const MDRequestRef& mdr)
       //  - avoid conflicting lock state changes
       //  - avoid concurrent updates to the inode
       //     (this could also be accomplished with the versionlock)
-      int allowance = 3; // 1 for the mdr auth_pin, 1 for the link lock, 1 for the snap lock
+      int allowance = srcdnl->get_inode()->get_num_auth_pins();
       dout(10) << " freezing srci " << *srcdnl->get_inode() << " with allowance " << allowance << dendl;
       if (!srcdnl->get_inode()->freeze_inode(allowance)) {
 	srcdnl->get_inode()->add_waiter(MDSCacheObject::WAIT_FROZEN, new C_MDS_RetryRequest(mdcache, mdr));
