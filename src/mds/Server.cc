@@ -10257,6 +10257,22 @@ void Server::handle_peer_rename_prep(const MDRequestRef& mdr)
     return;
   }
   if (r < 0) {
+    if (r == -ENOENT) {
+      // With no-subtreemap, intermediate dentries on the dest path
+      // may be null because their inodes are auth on the peer who
+      // sent us this rename_prep.  Discover the full path from the
+      // peer instead of retrying locally (which would loop forever
+      // because the null dentries never change on this rank).
+      dout(7) << " dest path_traverse failed with ENOENT,"
+              << " discovering from peer mds." << mdr->peer_to_mds << dendl;
+      CInode *base = mdcache->get_inode(destpath.get_ino());
+      if (base) {
+	mdcache->discover_path(base, CEPH_NOSNAP, destpath,
+	                       new C_MDS_RetryRequest(mdcache, mdr),
+	                       true, mdr->peer_to_mds);
+	return;
+      }
+    }
     dout(7) << " dest path_traverse failed with " << r << ", retrying" << dendl;
     mds->queue_waiter(new C_MDS_RetryRequest(mdcache, mdr));
     return;
