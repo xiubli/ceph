@@ -2258,8 +2258,26 @@ void Server::group_commit_eval()
 
 void Server::group_commit_enqueue(const MDRequestRef& mdr)
 {
+  // A gap longer than the maximum batching window means the previous
+  // burst has ended (or this is the first op): reset the eval window
+  // and the rate EMA so the next eval measures this burst's arrival
+  // rate instead of diluting it with the preceding idle time.  Reset
+  // the interval too: the stale value was tuned for the old rate, and
+  // between bursts a lone entry should flush promptly (MIN) anyway.
+  auto now = clock::now();
+  if (group_commit_last_enqueue != clock::zero() &&
+      now - group_commit_last_enqueue >
+        std::chrono::duration<double>(GROUP_COMMIT_MAX_INTERVAL)) {
+    group_commit_batch_count = 0;
+    group_commit_total_ops = 0;
+    group_commit_eval_start = clock::zero();
+    group_commit_arrival_rate = 0.0;
+    group_commit_interval = GROUP_COMMIT_MIN_INTERVAL;
+  }
+  group_commit_last_enqueue = now;
+
   if (group_commit_queue.empty()) {
-    group_commit_first_arrival = clock::now();
+    group_commit_first_arrival = now;
     // Arm a safety-net timer for the case where no second entry
     // arrives to piggyback. At this point there is only 1 entry
     // so lock contention is zero — the extra mds_lock is free.

@@ -652,6 +652,7 @@ private:
   double group_commit_interval = GROUP_COMMIT_MIN_INTERVAL;  // start at 5us
   time group_commit_eval_start = clock::zero();
   double group_commit_arrival_rate = 0.0;  // EMA, ops/s entering the queue
+  time group_commit_last_enqueue = clock::zero();  // burst-gap detection
 
   void group_commit_eval();
   bool group_commit_is_adaptive() const;
