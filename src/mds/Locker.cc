@@ -25,6 +25,7 @@
 #include "MDLog.h"
 #include "MDSRank.h"
 #include "MDSMap.h"
+#include "Server.h"
 #include "messages/MInodeFileCaps.h"
 #include "messages/MMDSPeerRequest.h"
 #include "Migrator.h"
@@ -5260,7 +5261,7 @@ void Locker::scatter_writebehind(ScatterLock *lock)
   in->finish_scatter_gather_update_accounted(lock->get_type(), &le->metablob);
 
   mds->mdlog->submit_entry(le, new C_Locker_ScatterWB(this, lock, mut));
-  mds->mdlog->flush();
+  mds->server->group_commit_defer_flush();
 }
 
 void Locker::scatter_writebehind_finish(ScatterLock *lock, MutationRef& mut)
