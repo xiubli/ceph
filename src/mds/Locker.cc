@@ -30,6 +30,7 @@
 #include "MDSMap.h"
 #include "RetryMessage.h"
 #include "RetryRequest.h"
+#include "Server.h"
 #include "SimpleLock.h"
 #include "SnapRealm.h"
 #include "messages/MClientCaps.h"
@@ -5287,7 +5288,7 @@ void Locker::scatter_writebehind(ScatterLock *lock)
   in->finish_scatter_gather_update_accounted(lock->get_type(), &le->metablob);
 
   mds->mdlog->submit_entry(le, new C_Locker_ScatterWB(this, lock, mut));
-  mds->mdlog->flush();
+  mds->server->group_commit_defer_flush();
 }
 
 void Locker::scatter_writebehind_finish(ScatterLock *lock, MutationRef& mut)
