@@ -318,6 +318,14 @@ target_link_libraries(unittest_dns_resolve global)
 add_ceph_unittest(unittest_dns_resolve)
 endif()
 
+# unittest_wakeup_fd
+if(LINUX OR FREEBSD)
+add_executable(unittest_wakeup_fd
+  test_wakeup_fd.cc)
+add_ceph_unittest(unittest_wakeup_fd)
+target_link_libraries(unittest_wakeup_fd ceph-common)
+endif()
+
 # We're getting an ICE when trying to compile this test using mingw-gcc and
 # recent Boost versions. Note that mingw-llvm works fine.
 if (NOT WIN32 OR (NOT(CMAKE_CXX_COMPILER_ID STREQUAL GNU)))
