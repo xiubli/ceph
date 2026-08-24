@@ -956,25 +956,25 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   // -- reference counting --
   void bad_put(int by) override {
-    generic_dout(0) << " bad put " << *this << " by " << by << " " << pin_name(by) << " was " << ref
-#ifdef MDS_REF_SET
-		    << " (" << ref_map << ")"
-#endif
-		    << dendl;
-#ifdef MDS_REF_SET
-    ceph_assert(ref_map[by] > 0);
-#endif
+    if (ref_set_enabled())
+      generic_dout(0) << " bad put " << *this << " by " << by << " " << pin_name(by) << " was " << ref
+		      << " (" << ref_map << ")" << dendl;
+    else
+      generic_dout(0) << " bad put " << *this << " by " << by << " " << pin_name(by) << " was " << ref
+		      << dendl;
+    if (ref_set_enabled())
+      ceph_assert(ref_map[by] > 0);
     ceph_assert(ref > 0);
   }
   void bad_get(int by) override {
-    generic_dout(0) << " bad get " << *this << " by " << by << " " << pin_name(by) << " was " << ref
-#ifdef MDS_REF_SET
-		    << " (" << ref_map << ")"
-#endif
-		    << dendl;
-#ifdef MDS_REF_SET
-    ceph_assert(ref_map[by] >= 0);
-#endif
+    if (ref_set_enabled())
+      generic_dout(0) << " bad get " << *this << " by " << by << " " << pin_name(by) << " was " << ref
+		      << " (" << ref_map << ")" << dendl;
+    else
+      generic_dout(0) << " bad get " << *this << " by " << by << " " << pin_name(by) << " was " << ref
+		      << dendl;
+    if (ref_set_enabled())
+      ceph_assert(ref_map[by] >= 0);
   }
   void first_get() override;
   void last_put() override;
