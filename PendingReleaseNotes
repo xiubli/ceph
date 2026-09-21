@@ -225,6 +225,15 @@
   pmem) keep the single ring and completion thread they had before and
   are unchanged.  The default of ``bdev_aio_reap_max`` rises from 16 to
   128 completions per pass.
+* CephFS: The MDS now ends a readdir reply early when other requests are
+  waiting. A readdir page is encoded while ``mds_lock`` is held, so a client
+  walking a large directory could block the rest of the rank. Once a page has
+  been encoding for ``mds_readdir_yield_budget`` (default 0.5ms) and another
+  message has waited as long, the MDS ends the page, costing the reader an extra
+  round trip. **This is active by default**: a large readdir may now take more
+  replies than before. Set ``mds_readdir_yield_budget`` to 0 to restore the
+  previous behaviour. Two fixed caps, ``mds_max_readdir_entries`` and
+  ``mds_max_readdir_bytes``, are also available and off by default.
 
 >=21.0.0
 
