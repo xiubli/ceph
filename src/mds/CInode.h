@@ -59,6 +59,7 @@ class MDCache;
 class MDSContext;
 class LogSegment;
 struct SnapRealm;
+struct SnapInfo;
 class Session;
 struct ObjectOperation;
 class EMetaBlob;
@@ -823,10 +824,13 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   
   // for giving to clients
   // With 'new_caps' false, a client that holds no cap on the inode is not
-  // given one.
+  // given one.  'snap_info' lets a caller that has already resolved the
+  // SnapInfo for 'snapid' hand it over instead of having it looked up again
+  // per inode.
   int encode_inodestat(ceph::buffer::list& bl, Session *session, SnapRealm *realm,
 		       snapid_t snapid=CEPH_NOSNAP, unsigned max_bytes=0,
-		       int getattr_wants=0, bool new_caps=true);
+		       int getattr_wants=0, const SnapInfo *snap_info=nullptr,
+		       bool new_caps=true);
   void encode_cap_message(const ceph::ref_t<MClientCaps> &m, Capability *cap);
 
   SimpleLock* get_lock(int type) override;
