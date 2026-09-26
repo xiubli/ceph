@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <string_view>
 #include <thread>
 
@@ -1425,6 +1426,13 @@ private:
   StrayManager stray_manager;
 
  private:
+  // purge_inodes() jobs, issued under one mds_purge_inodes_max_ops budget
+  struct PurgeInodes;
+  void kick_purge_inodes();
+  void finish_purge_inodes_batch(std::shared_ptr<PurgeInodes> p, uint64_t n);
+  std::deque<std::shared_ptr<PurgeInodes>> purge_inodes_queue;
+  uint64_t purge_inodes_inflight = 0;
+
   std::set<inodeno_t> replay_taken_inos; // the inos have been taken when replaying
 
   // -- fragmenting --
