@@ -250,6 +250,14 @@
   previous behaviour. The deletes that remain, for sessions that are evicted,
   time out or are killed, are now issued at most ``mds_purge_inodes_max_ops``
   (default 512) at a time across all closing sessions; set it to 0 for no limit.
+* CephFS: Added the MDS option ``mds_defer_client_range_shrink``, off by
+  default.  When a client gives up its write caps on a file and nothing else
+  about the inode changed, the MDS then drops the client's writeable range in
+  memory instead of journaling an inode update for it, which removes a journal
+  event from every file created and closed without data.  The trade-off is
+  that an MDS failure before the dropped range is committed with the
+  inode's directory fragment makes recovery probe the size of such files
+  whose clients no longer hold caps on them.
 
 >=21.0.0
 
