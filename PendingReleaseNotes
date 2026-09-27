@@ -1,4 +1,13 @@
 * DASHBOARD: Added support for RGW zonegroup hostnames and wildcard certificates for virtual-host-style bucket access
+* CephFS: Added the MDS option ``mds_defer_client_range_shrink``, off by
+  default.  When a client gives up its write caps on a file and nothing else
+  about the inode changed, the MDS then drops the client's writeable range in
+  memory instead of journaling an inode update for it, which removes a journal
+  event from every file created and closed without data.  The trade-off is
+  that an MDS failure before the dropped range is committed with the
+  inode's directory fragment makes recovery probe the size of such files
+  whose clients no longer hold caps on them.
+
 * CephFS: The MDS now ends a readdir reply early when other requests are
   waiting. A readdir page is encoded while ``mds_lock`` is held, so a client
   walking a large directory could block the rest of the rank. Once a page has
