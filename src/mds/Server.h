@@ -468,6 +468,7 @@ private:
            xattr_name == "ceph.dir.pin" ||
            xattr_name == "ceph.dir.pin.random" ||
            xattr_name == "ceph.dir.pin.distributed" ||
+           xattr_name == "ceph.dir.pin.distributed.tree" ||
            xattr_name == "ceph.dir.charmap"sv ||
            xattr_name == "ceph.dir.normalization"sv ||
            xattr_name == "ceph.dir.encoding"sv ||
@@ -487,6 +488,7 @@ private:
 	   xattr_name == "ceph.dir.pin" ||
 	   xattr_name == "ceph.dir.pin.random" ||
 	   xattr_name == "ceph.dir.pin.distributed" ||
+	   xattr_name == "ceph.dir.pin.distributed.tree" ||
 	   xattr_name == "ceph.dir.charmap"sv ||
 	   xattr_name == "ceph.dir.normalization"sv ||
 	   xattr_name == "ceph.dir.encoding"sv ||
