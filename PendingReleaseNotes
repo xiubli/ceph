@@ -258,6 +258,15 @@
   that an MDS failure before the dropped range is committed with the
   inode's directory fragment makes recovery probe the size of such files
   whose clients no longer hold caps on them.
+* CephFS: A new directory policy ``ceph.dir.pin.distributed.tree`` spreads the
+  fragments of every fragmented directory below the directory it is set on
+  across the active MDS ranks;
+  ``mds_export_ephemeral_distributed_tree_min_entries`` limits it to
+  directories of at least that many entries. The MDS also no longer lists
+  dirfrag replicas that were not replicated for read load in its replies, and
+  no longer read-replicates the dirfrags of ephemerally pinned directories;
+  both made clients send lookups to replicas that had to forward them. See
+  doc/cephfs/multimds.rst.
 
 >=21.0.0
 
