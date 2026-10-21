@@ -4111,6 +4111,7 @@ std::vector<std::string> MDSRankDispatcher::get_tracked_keys()
     "mds_cap_revoke_eviction_timeout",
     "mds_debug_subtrees",
     "mds_defer_client_range_shrink",
+    "mds_defer_open_client_range",
     "mds_dir_max_entries",
     "mds_dir_prefetch",
     "mds_dir_prefetch_backend",
