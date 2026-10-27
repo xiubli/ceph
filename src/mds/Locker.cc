@@ -4316,7 +4316,9 @@ bool Locker::_do_cap_update(CInode *in, Capability *cap,
        // a filelock state change is waiting for the wrlock held above
        // until this update is journaled
        ((change_max || (dirty & (CEPH_CAP_FILE_EXCL|CEPH_CAP_FILE_WR))) &&
-	!in->filelock.is_stable())))
+	!in->filelock.is_stable()) ||
+       // a freeze, e.g. a peer rename, waits for this update's auth pin
+       in->is_freezing_inode()))
     *need_flush = true;
 
   return true;
