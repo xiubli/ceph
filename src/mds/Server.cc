@@ -2185,7 +2185,13 @@ void Server::journal_and_reply(const MDRequestRef& mdr, CInode *in, CDentry *dn,
      * meanwhile, each create has to allocate from the inotable instead, and
      * that rules out an early reply.
      */
-    if (!mdr->prealloc_inos.empty())
+    bool flush = !mdr->prealloc_inos.empty();
+    // Witnesses keep their locks until we commit, and the requests that
+    // wait for those locks on other ranks cannot nudge our log: flush it
+    // rather than leave them waiting for the next tick.
+    if (mdr->has_more() && !mdr->more()->witnessed.empty())
+      flush = true;
+    if (flush)
       mdlog->flush();
   } else if (g_conf().get_val<bool>("mds_group_commit_enable") &&
              !mds->is_daemon_stopping()) {
