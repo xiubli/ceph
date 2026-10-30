@@ -102,6 +102,7 @@ public:
     recall_caps_throttle2o(0.5),
     session_cache_liveness(g_conf().get_val<double>("mds_session_cache_liveness_decay_rate")),
     cap_acquisition(g_conf().get_val<double>("mds_session_cap_acquisition_decay_rate")),
+    cap_recall(g_conf().get_val<double>("mds_session_cap_acquisition_decay_rate")),
     birth_time(clock::now())
   {
     set_connection(std::move(con));
@@ -179,6 +180,9 @@ public:
   }
   auto get_cap_acquisition() const {
     return cap_acquisition.get();
+  }
+  auto get_cap_recall() const {
+    return cap_recall.get();
   }
 
   inodeno_t take_ino(inodeno_t ino = 0) {
@@ -490,6 +494,8 @@ private:
 
   // cap acquisition via readdir
   DecayCounter cap_acquisition;
+  // caps asked back by recall, over the same period as cap_acquisition
+  DecayCounter cap_recall;
 
   // session start time -- used to track average session time
   // note that this is initialized in the constructor rather
