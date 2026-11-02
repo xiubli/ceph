@@ -5573,6 +5573,29 @@ void Locker::mark_updated_scatterlock(ScatterLock *lock)
  * we need to lock|scatter in order to push fnode changes into the
  * inode.dirstat.
  */
+/*
+ * Move a stable scatterlock towards MIX so that it can be wrlocked, as
+ * wrlock_start() does, for a caller that waits for WAIT_STABLE itself: the
+ * auth scatters it, a replica asks the auth to.
+ */
+void Locker::scatter_for_wrlock(ScatterLock *lock)
+{
+  ceph_assert(lock->is_stable());
+  CInode *in = static_cast<CInode *>(lock->get_parent());
+  if (in->is_auth()) {
+    if (lock->get_state() != LOCK_MIX)
+      scatter_mix(lock);
+    return;
+  }
+  mds_rank_t auth = in->authority().first;
+  if (!mds->is_cluster_degraded() ||
+      mds->mdsmap->is_clientreplay_or_active_or_stopping(auth)) {
+    dout(10) << __func__ << " requesting scatter from auth on " << *lock
+	     << " on " << *in << dendl;
+    mds->send_message_mds(make_message<MLock>(lock, LOCK_AC_REQSCATTER, mds->get_nodeid()), auth);
+  }
+}
+
 void Locker::scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchange)
 {
   CInode *p = static_cast<CInode *>(lock->get_parent());

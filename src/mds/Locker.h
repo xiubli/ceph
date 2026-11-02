@@ -151,6 +151,7 @@ public:
 
   void scatter_tick();
   void scatter_nudge(ScatterLock *lock, MDSContext *c, bool forcelockchange=false);
+  void scatter_for_wrlock(ScatterLock *lock);
 
   void mark_updated_scatterlock(ScatterLock *lock);
 

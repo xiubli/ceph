@@ -387,6 +387,7 @@ void Migrator::find_stale_export_freeze()
     if (stat.last_cum_auth_pins_change >= cutoff)
       continue;
     if (stat.num_remote_waiters > 0 ||
+	stat.frozen_lock_waits > 0 ||
 	(!dir->inode->is_root() && dir->get_parent_dir()->is_freezing())) {
       export_try_cancel(dir);
     }
@@ -1528,6 +1529,35 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
   CInode *diri = dir->get_inode();
   if ((diri->is_auth() && diri->is_frozen()) ||
       !export_try_grab_locks(dir, it->second.mut)) {
+    // The dir inode's filelock or nestlock may be changing state, e.g.
+    // sync->mix while a client's caps on the directory are revoked, or be
+    // stable in a state that cannot be wrlocked, e.g. sync.  Neither the
+    // change nor a scatter needs the frozen subtree (scatter updates skip
+    // frozen dirfrags), so get the lock moving towards mix and wait for it
+    // a few times rather than throwing the freeze away and starting over.
+    // find_stale_export_freeze() cancels the export if this takes too long.
+    if (!(diri->is_auth() && diri->is_frozen()) &&
+	it->second.frozen_lock_waits < 4) {
+      ScatterLock *lock = nullptr;
+      if (!diri->filelock.can_wrlock(diri->get_loner()))
+	lock = &diri->filelock;
+      else if (!diri->nestlock.can_wrlock(diri->get_loner()))
+	lock = &diri->nestlock;
+      if (lock) {
+	it->second.frozen_lock_waits++;
+	if (lock->is_stable())
+	  mds->locker->scatter_for_wrlock(lock);
+	if (lock->is_stable() && lock->can_wrlock(diri->get_loner())) {
+	  export_frozen(dir, tid);
+	  return;
+	}
+	dout(7) << "export_dir waiting for " << *lock << " to settle on "
+		<< *diri << dendl;
+	lock->add_waiter(SimpleLock::WAIT_STABLE,
+			 new C_MDC_ExportFreeze(this, dir, it->second.tid));
+	return;
+      }
+    }
     dout(7) << "export_dir couldn't acquire all needed locks, failing. "
 	    << *dir << dendl;
     export_try_cancel(dir);

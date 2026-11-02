@@ -313,6 +313,7 @@ protected:
     utime_t last_cum_auth_pins_change;
     int last_cum_auth_pins = 0;
     int num_remote_waiters = 0; // number of remote authpin waiters
+    int frozen_lock_waits = 0; // waits for the dir inode's locks once frozen
     std::shared_ptr<export_base_t> parent;
   };
 
