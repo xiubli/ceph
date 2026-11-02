@@ -4357,8 +4357,9 @@ bool Locker::_do_cap_update(CInode *in, Capability *cap,
        // until this update is journaled
        ((change_max || (dirty & (CEPH_CAP_FILE_EXCL|CEPH_CAP_FILE_WR))) &&
 	!in->filelock.is_stable()) ||
-       // a freeze, e.g. a peer rename, waits for this update's auth pin
-       in->is_freezing_inode() ||
+       // a freeze, of the inode for a peer rename or of the subtree it is
+       // in for an export, waits for this update's auth pin
+       in->is_freezing() ||
        _need_flush_file_update(in, mut)))
     *need_flush = true;
 
