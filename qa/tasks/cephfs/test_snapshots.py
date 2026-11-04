@@ -645,3 +645,61 @@ class TestMonSnapsAndFsPools(CephFSTestCase):
         ret = self.get_ceph_cmd_result(args=base_cmd, check_status=False)
         base_cmd = 'osd pool delete test_metadata_pool'
         ret = self.get_ceph_cmd_result(args=base_cmd, check_status=False)
+
+
+class TestSnapshotNullDentry(CephFSTestCase):
+    CLIENTS_REQUIRED = 2
+    MDSS_REQUIRED = 1
+
+    def test_snap_lookup_after_head_lookup_miss(self):
+        """
+        A head lookup that misses in an incomplete dirfrag must not leave
+        a null dentry that hides snapshotted dentries still on disk.
+
+        mount_a keeps a file open in the directory so that the dirfrag
+        stays in the MDS cache while "cache drop" trims the other
+        dentries, which makes the dirfrag incomplete and gives it a
+        bloom filter.  The head lookup then misses in the bloom filter
+        and adds a null dentry.  The lookups go through mount_b, which is
+        remounted before each of them so that it has nothing cached.
+        """
+        self.fs.set_allow_new_snaps(True)
+
+        self.mount_a.run_shell_payload(
+            "mkdir d && "
+            "for i in $(seq 0 99); do echo $i > d/f$i; done && "
+            "echo snapdata > d/t")
+        self.mount_a.run_shell(["mkdir", "d/.snap/s1"])
+        self.mount_a.run_shell(["rm", "d/t"])
+
+        # Remount so that mount_a holds no caps on the files, otherwise
+        # "cache drop" cannot trim their dentries.
+        self.mount_a.umount_wait()
+        self.mount_a.mount_wait()
+        hold = self.mount_a.open_background("d/hold")
+
+        self.mount_b.umount_wait()
+        self.fs.rank_asok(["flush", "journal"])
+        self.fs.rank_tell(["cache", "drop", "30"])
+
+        # Head lookup of the unlinked name: ENOENT is the right answer,
+        # but it must not shadow the snapshotted dentry.
+        self.mount_b.mount_wait()
+        with self.assertRaises(CommandFailedError):
+            self.mount_b.run_shell(["stat", "d/t"])
+
+        self.mount_b.umount_wait()
+        self.mount_b.mount_wait()
+        try:
+            self.mount_b.run_shell(["stat", "d/.snap/s1/t"])
+        except CommandFailedError:
+            self.fail("d/.snap/s1/t is missing after a head lookup of d/t")
+        self.assertEqual(self.mount_b.read_file("d/.snap/s1/t").strip(),
+                         "snapdata")
+
+        self.mount_b.umount_wait()
+        self.mount_b.mount_wait()
+        self.assertIn("t", self.mount_b.ls("d/.snap/s1"))
+
+        self.mount_a.kill_background(hold)
+        self.mount_a.run_shell(["rmdir", "d/.snap/s1"])
