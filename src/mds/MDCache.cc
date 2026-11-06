@@ -6931,7 +6931,8 @@ void MDCache::finish_purge_inodes_batch(std::shared_ptr<PurgeInodes> p, uint64_t
 // ================================================================================
 // cache trimming
 
-std::pair<bool, uint64_t> MDCache::trim_lru(uint64_t count, expiremap& expiremap)
+std::pair<bool, uint64_t> MDCache::trim_lru(uint64_t count, expiremap& expiremap,
+					    bool nonauth_only)
 {
   bool is_standby_replay = mds->is_standby_replay();
   std::vector<CDentry *> unexpirables;
@@ -7000,6 +7001,14 @@ std::pair<bool, uint64_t> MDCache::trim_lru(uint64_t count, expiremap& expiremap
     if (!dn) {
       break;
     }
+    /* The replicas an export left at the bottom of the LRU are behind us:
+     * the count is theirs, so do not make it up with auth dentries that
+     * merely sat next to them, which would leave their dirfrags
+     * incomplete for no cache pressure. */
+    if (nonauth_only && dn->is_auth() && !cache_toofull()) {
+      lru.lru_insert_bot(dn);
+      break;
+    }
     CDir *dir = dn->get_dir();
     if ((is_standby_replay && dn->get_linkage()->inode &&
         dn->get_linkage()->inode->item_open_file.is_on_list())) {
@@ -7039,7 +7048,7 @@ std::pair<bool, uint64_t> MDCache::trim_lru(uint64_t count, expiremap& expiremap
  *
  * @param count is number of dentries to try to expire
  */
-std::pair<bool, uint64_t> MDCache::trim(uint64_t count)
+std::pair<bool, uint64_t> MDCache::trim(uint64_t count, bool nonauth_only)
 {
   uint64_t used = cache_size();
   uint64_t limit = cache_memory_limit;
@@ -7053,7 +7062,7 @@ std::pair<bool, uint64_t> MDCache::trim(uint64_t count)
   // process delayed eval_stray()
   stray_manager.advance_delayed();
 
-  auto result = trim_lru(count, expiremap);
+  auto result = trim_lru(count, expiremap, nonauth_only);
   auto& trimmed = result.second;
 
   // trim non-auth, non-bound subtrees
