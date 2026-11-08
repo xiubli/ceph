@@ -25,6 +25,7 @@
 #include "CInode.h"
 #include "CDir.h"
 #include "MDCache.h"
+#include "Locker.h"
 #include "Migrator.h"
 #include "Mantle.h"
 
@@ -95,6 +96,7 @@ MDBalancer::MDBalancer(MDSRank *m, Messenger *msgr, MonClient *monc) :
   bal_merge_size = g_conf().get_val<int64_t>("mds_bal_merge_size");
   bal_mode = g_conf().get_val<int64_t>("mds_bal_mode");
   bal_replicate_threshold = g_conf().get_val<double>("mds_bal_replicate_threshold");
+  bal_skip_replicate_ephemeral_random = g_conf().get_val<bool>("mds_bal_skip_replicate_ephemeral_random");
   bal_sample_interval = g_conf().get_val<double>("mds_bal_sample_interval");
   bal_split_rd = g_conf().get_val<double>("mds_bal_split_rd");
   bal_split_bits = g_conf().get_val<int64_t>("mds_bal_split_bits");
@@ -124,6 +126,8 @@ void MDBalancer::handle_conf_change(const std::set<std::string>& changed, const 
     bal_mode = g_conf().get_val<int64_t>("mds_bal_mode");
   if (changed.count("mds_bal_replicate_threshold"))
     bal_replicate_threshold = g_conf().get_val<double>("mds_bal_replicate_threshold");
+  if (changed.count("mds_bal_skip_replicate_ephemeral_random"))
+    bal_skip_replicate_ephemeral_random = g_conf().get_val<bool>("mds_bal_skip_replicate_ephemeral_random");
   if (changed.count("mds_bal_sample_interval"))
     bal_sample_interval = g_conf().get_val<double>("mds_bal_sample_interval");
   if (changed.count("mds_bal_split_rd"))
@@ -149,6 +153,26 @@ void MDBalancer::handle_export_pins(void)
 {
   const mds_rank_t max_mds = mds->mdsmap->get_max_mds();
   auto mdcache = mds->mdcache;
+
+  /* The auth of a directory sends its decision on the size to the replicas
+   * with the filelock state, which only goes with a move of the filelock
+   * to SYNC or MIX.  A decision that changes after the last such move, for
+   * example when the dirstat gathered from the replicas is journaled while
+   * the filelock rests in LOCK, would not reach them, and the dirfrags
+   * they hold would not follow it.  Move the filelock along for those.
+   */
+  if (mdcache->get_ephemeral_dist_tree_min_entries() > 0) {
+    std::vector<CInode*> unshared;
+    for (auto in : mdcache->fragmented_dirs) {
+      if (in->is_dist_tree_unshared() && in->filelock.is_stable() &&
+	  !in->is_frozen() && !in->is_freezing() && !in->is_ambiguous_auth())
+	unshared.push_back(in);
+    }
+    for (auto in : unshared) {
+      dout(10) << " sharing the size decision of " << *in << dendl;
+      mds->locker->scatter_nudge(&in->filelock, nullptr, true);
+    }
+  }
 
   auto &q = mdcache->export_pin_queue;
   auto it = q.begin();
@@ -226,6 +250,29 @@ void MDBalancer::handle_export_pins(void)
 	  dout(10) << " clear auxsubtree on " << *dir << dendl;
 	  dir->state_clear(CDir::STATE_AUXSUBTREE);
 	  mds->mdcache->try_subtree_merge(dir);
+	}
+	if (dir->is_subtree_root() && in->is_dist_tree_gathered()) {
+	  /* A ceph.dir.pin.distributed.tree policy no longer distributes
+	   * this directory, as it shrank below
+	   * mds_export_ephemeral_distributed_tree_min_entries: its
+	   * fragments go back to the subtree of its parent, on the auth of
+	   * the inode.  Nothing else would move them, as there is no export
+	   * pin.  An empty one is sent back by the importer anyway.
+	   */
+	  auto auth = in->authority();
+	  if (auth.second != CDIR_AUTH_UNKNOWN ||
+	      dir->is_frozen() || dir->is_freezing()) {
+	    remove = false;
+	    continue;
+	  }
+	  if (auth.first == mds->get_nodeid()) {
+	    mds->mdcache->try_subtree_merge(dir);
+	  } else if (dir->get_num_head_items() > 0) {
+	    dout(10) << " gather tree-distributed " << *dir << " to mds."
+		     << auth.first << dendl;
+	    mds->mdcache->migrator->export_dir(dir, auth.first);
+	    remove = false;
+	  }
 	}
       } else if (target == mds->get_nodeid()) {
         if (dir->state_test(CDir::STATE_AUXSUBTREE)) {
@@ -1397,13 +1444,15 @@ void MDBalancer::hit_dir(CDir *dir, int type, double amount)
 
     dout(20) << type << " pop " << dir_pop << " spread in " << *dir << dendl;
     if (dir->is_auth() && !dir->is_ambiguous_auth() && dir->can_rep()) {
-      // An ephemerally pinned directory (distributed or random) is already
-      // spread over the ranks by its policy.  Replicating its fragments as
-      // well only makes clients send lookups to replicas that rarely hold
-      // the dentry, and those get forwarded back to the auth.
+      // The fragments of an ephemerally distributed directory are already
+      // spread over the ranks: do not replicate them for read load too.
+      // Those of a randomly pinned one are on one rank, but replicating
+      // them slows down workloads that read each dentry only once or twice
+      // and then remove it, so that can be turned off.
       if (dir_pop >= bal_replicate_threshold &&
 	  !dir->inode->is_ephemeral_dist() &&
-	  !dir->inode->is_ephemeral_rand()) {
+	  !(bal_skip_replicate_ephemeral_random &&
+	    dir->inode->is_ephemeral_rand())) {
 	// replicate
 	double rdp = dir->pop_me.get(META_POP_IRD).get();
 	rd_adj = rdp / mds->get_mds_map()->get_num_in_mds() - rdp;

@@ -197,10 +197,11 @@ percentage (default: ``.01``). The MDS returns ``EINVAL`` when attempting to
 set a value beyond this config.
 
 **Distributed Tree Ephemeral Pins**: A distributed ephemeral pin spreads the
-fragments of the directory it is set on, but a directory below it stays on the
-rank of the parent fragment it lives in. When the large directories are deeper
-in the tree, for example a shared directory that many clients create files in,
-set ``ceph.dir.pin.distributed.tree`` on a directory above them instead:
+fragments of the directory it is set on (dirfrags, see :doc:`dirfrags`), but a
+directory below it stays on the rank of the parent fragment it lives in. When
+the large directories are deeper in the tree, for example a shared directory
+that many clients create files in, set ``ceph.dir.pin.distributed.tree`` on a
+directory above them instead:
 
 .. prompt:: bash #
 
@@ -232,7 +233,8 @@ an imported fragment without any back to the rank of its parent. When a tree
 holds many directories just past the split size, each of them adds several
 subtrees for little gain; ``mds_export_ephemeral_distributed_tree_min_entries``
 then sets how many entries a fragmented directory needs before the policy
-distributes it (it stays distributed until it shrinks below half of that).
+distributes it (it stays distributed until it shrinks below half of that,
+rounded up, and its fragments then go back to the rank of its parent).
 Smaller directories stay with their parent. The default, 0, distributes every
 fragmented directory.
 
@@ -240,9 +242,27 @@ Spreading one directory over several ranks helps workloads with many clients
 working in it. A single client gains little, because a client serializes the
 creates and unlinks it issues in one directory.
 
-The ranks do not replicate the fragments of directories under a distributed or
-random ephemeral pin for read load: those fragments are already spread over
-the ranks.
+.. note:: ``ceph-fuse`` clients need the fix for
+   https://tracker.ceph.com/issues/81952 to work well in a directory spread over
+   several ranks, by this policy or by a distributed ephemeral pin. Without it,
+   creates and unlinks from several such clients in one directory run at a small
+   fraction of their usual rate. ``libcephfs`` applications need that fix too,
+   and should not ask for the size, times, blocks or link count of such a
+   directory when they look it up with ``ceph_ll_lookup()``: those need the
+   ``Fs`` cap, which no client gets while the directory is spread. Kernel
+   clients need the MDS side of that fix: without it, unlinks from several
+   kernel clients in such a directory are slower than with the directory on
+   one rank.
+
+The ranks do not replicate the fragments of directories under a distributed
+ephemeral pin for read load: those fragments are already spread over the
+ranks. Other hot directories, randomly pinned ones included, can be
+replicated; a replica then answers the reads that clients send to it, and
+fetches the dentries it does not hold from the auth rank once they have been
+read there ``mds_bal_replica_discover_reads`` times. Workloads that read each
+file only once or twice and then remove it are faster without replicas for
+randomly pinned directories: set ``mds_bal_skip_replicate_ephemeral_random``
+for that.
 
 The random and distributed ephemeral pin policies are enabled by the
 ``mds_export_ephemeral_random`` and ``mds_export_ephemeral_distributed``
