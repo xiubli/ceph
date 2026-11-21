@@ -34,6 +34,9 @@ struct SnapRealm {
 
 private:
   SnapContext cached_snap_context;  // my_snaps + parent snaps + past_parent_snaps
+  // a copy of cached_snap_context for readers without client_lock (the
+  // write fast path), or null when the cache is invalid
+  std::atomic<std::shared_ptr<const SnapContext>> published_snapc;
   friend std::ostream& operator<<(std::ostream& out, const SnapRealm& r);
 
 public:
@@ -46,6 +49,12 @@ public:
   void build_snap_context();
   void invalidate_cache() {
     cached_snap_context.clear();
+    published_snapc.store(nullptr);
+  }
+
+  // the snap context, if it is cached; may be called without client_lock
+  std::shared_ptr<const SnapContext> get_published_snap_context() const {
+    return published_snapc.load();
   }
 
   const SnapContext& get_snap_context() {
