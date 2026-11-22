@@ -447,6 +447,9 @@ Client::Client(Messenger *m, MonClient *mc, Objecter *objecter_)
   fscrypt_as = cct->_conf.get_val<bool>(
     "client_fscrypt_as");
 
+  force_lazyio = cct->_conf.get_val<bool>("client_force_lazyio");
+  quota_enabled = cct->_conf.get_val<bool>("client_quota");
+
   if (cct->_conf->client_acl_type == "posix_acl")
     acl_type = POSIX_ACL;
 
@@ -11883,7 +11886,7 @@ int Client::_open(const InodeRef& in, int flags, mode_t mode, Fh **fhp,
 
   // use normalized flags to generate cmode
   int cflags = ceph_flags_sys2wire(flags);
-  if (cct->_conf.get_val<bool>("client_force_lazyio"))
+  if (force_lazyio.load(std::memory_order_relaxed))
     cflags |= CEPH_O_LAZY;
 
   int cmode = ceph_flags_to_mode(cflags);
@@ -14845,7 +14848,7 @@ int Client::_statfs(Inode *in, struct statvfs *stbuf,
 
   // get_quota_root should always give us something if client quotas are
   // enabled
-  ceph_assert(cct->_conf.get_val<bool>("client_quota") == false || qr_bytes != nullptr);
+  ceph_assert(quota_enabled.load(std::memory_order_relaxed) == false || qr_bytes != nullptr);
 
   /* If bytes quota is set on a directory and conf option "client quota df"
    * is also set, available space = quota limit - used space. Else,
@@ -17403,7 +17406,7 @@ int Client::_create(const walk_dentry_result& wdr, int flags, mode_t mode,
 
   // use normalized flags to generate cmode
   int cflags = ceph_flags_sys2wire(flags);
-  if (cct->_conf.get_val<bool>("client_force_lazyio"))
+  if (force_lazyio.load(std::memory_order_relaxed))
     cflags |= CEPH_O_LAZY;
 
   int cmode = ceph_flags_to_mode(cflags);
@@ -18000,7 +18003,7 @@ int Client::_rename(Inode *fromdir, const char *fromname, Inode *todir, const ch
   }
 
   // don't allow cross-quota renames
-  if (cct->_conf.get_val<bool>("client_quota") && wdr_from.diri != wdr_to.diri) {
+  if (quota_enabled.load(std::memory_order_relaxed) && wdr_from.diri != wdr_to.diri) {
     Inode *fromdir_root =
       wdr_from.diri->quota.is_enabled() ? wdr_from.diri.get() : get_quota_root(wdr_from.diri.get(), perm);
     Inode *todir_root =
@@ -19887,7 +19890,7 @@ Inode *Client::get_quota_root(Inode *in, const UserPerm& perms, quota_max_t type
   Inode *quota_in = root_ancestor;
   SnapRealm *realm = in->snaprealm;
 
-  if (!cct->_conf.get_val<bool>("client_quota"))
+  if (!quota_enabled.load(std::memory_order_relaxed))
     return NULL;
 
   while (realm) {
@@ -19915,7 +19918,7 @@ Inode *Client::get_quota_root(Inode *in, const UserPerm& perms, quota_max_t type
 bool Client::check_quota_condition(Inode *in, const UserPerm& perms,
 				   std::function<bool (const Inode &in)> test)
 {
-  if (!cct->_conf.get_val<bool>("client_quota"))
+  if (!quota_enabled.load(std::memory_order_relaxed))
     return false;
 
   while (true) {
@@ -20614,6 +20617,7 @@ std::vector<std::string> Client::get_tracked_keys() const noexcept
     "client_caps_release_delay",
     "client_deleg_break_on_open",
     "client_deleg_timeout",
+    "client_force_lazyio",
     "client_fscrypt_as",
     "client_inject_write_delay_secs",
     "client_mount_timeout",
@@ -20623,6 +20627,7 @@ std::vector<std::string> Client::get_tracked_keys() const noexcept
     "client_oc_size",
     "client_oc_target_dirty",
     "client_permissions",
+    "client_quota",
     "client_respect_subvolume_snapshot_visibility",
     "fuse_default_permissions"
   });
@@ -20692,6 +20697,12 @@ void Client::handle_conf_change(const ConfigProxy& conf,
   if (changed.count("client_fscrypt_as")) {
     fscrypt_as = cct->_conf.get_val<bool>(
       "client_fscrypt_as");
+  }
+  if (changed.count("client_force_lazyio")) {
+    force_lazyio = cct->_conf.get_val<bool>("client_force_lazyio");
+  }
+  if (changed.count("client_quota")) {
+    quota_enabled = cct->_conf.get_val<bool>("client_quota");
   }
 }
 
