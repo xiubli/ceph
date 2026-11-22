@@ -3004,6 +3004,10 @@ void Client::handle_client_session(const MConstRef<MClientSession>& m)
 
       reinit_mds_features(session.get(), m);
       cap_auths = std::move(m->cap_auths);
+      cap_auths_allow_all = std::all_of(
+        cap_auths.begin(), cap_auths.end(), [](const MDSCapAuth& a) {
+          return a.readable && a.writeable && !a.match.root_squash;
+        });
 
       renew_caps(session.get());
       session->state = MetaSession::STATE_OPEN;
@@ -9208,6 +9212,11 @@ int Client::_getvxattr(
   return res;
 }
 
+bool Client::has_absolute_path(const InodeRef& in)
+{
+  return in && metadata.count("root") && in->has_path();
+}
+
 bool Client::make_absolute_path_string(const InodeRef& in, std::string& path)
 {
   auto it = metadata.find("root");
@@ -11914,12 +11923,16 @@ int Client::_open(const InodeRef& in, int flags, mode_t mode, Fh **fhp,
       mask |= MAY_WRITE;
     }
 
+    // the path is needed only when an auth cap may deny the open
     std::string path;
-    if (make_absolute_path_string(in, path)) {
-      ldout(cct, 20) << __func__ << " absolute path: " << path << dendl;
-      result = mds_check_access(path, perms, mask);
-      if (result) {
-        return result;
+    if (cap_auths_allow_all ? has_absolute_path(in) :
+                              make_absolute_path_string(in, path)) {
+      if (!cap_auths_allow_all) {
+        ldout(cct, 20) << __func__ << " absolute path: " << path << dendl;
+        result = mds_check_access(path, perms, mask);
+        if (result) {
+          return result;
+        }
       }
       // update wanted?
       check_caps(in, CHECK_CAPS_NODELAY);
