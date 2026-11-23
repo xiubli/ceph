@@ -1196,6 +1196,8 @@ void ObjectCacher::bh_write_scattered(list<BufferHead*>& blist)
     bh->last_write_tid = tid;
     mark_tx(bh);
   }
+  stat_wb_inflight += total_len;
+  publish_wb_inflight();
 
   if (perfcounter)
     perfcounter->inc(l_objectcacher_data_flushed, total_len);
@@ -1239,6 +1241,8 @@ void ObjectCacher::bh_write(BufferHead *bh, const ZTracer::Trace &parent_trace)
   }
 
   mark_tx(bh);
+  stat_wb_inflight += bh->length();
+  publish_wb_inflight();
 }
 
 void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid,
@@ -1248,6 +1252,25 @@ void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid,
   ceph_assert(ceph_mutex_is_locked(lock));
   ldout(cct, 7) << "bh_write_commit " << oid << " tid " << tid
 		<< " ranges " << ranges << " returned " << r << dendl;
+
+  // the write is out of flight, whatever its BufferHeads became since
+  {
+    bool was_full = writeback_full();
+    uint64_t len = 0;
+    for (const auto& [off, l] : ranges)
+      len += l;
+    ceph_assert(stat_wb_inflight >= len);
+    stat_wb_inflight -= len;
+    publish_wb_inflight();
+    if (was_full && !writeback_full()) {
+      flusher_cond.notify_all();
+      // a member that stopped on the group's total may go on too
+      if (group)
+        for (auto o : *group)
+          if (o != this)
+            o->flusher_cond.notify_all();
+    }
+  }
 
   if (objects[poolid].count(oid) == 0) {
     ldout(cct, 7) << "bh_write_commit no object cache" << dendl;
@@ -1367,6 +1390,10 @@ void ObjectCacher::flush(ZTracer::Trace *trace, loff_t amount, int max_bhs)
   int64_t left = amount;
   int left_bhs = max_bhs;
   while ((amount == 0 && max_bhs == 0) || left > 0 || left_bhs > 0) {
+    // the OSDs are behind: let rewrites land in the cache meanwhile (a
+    // commit wakes us, see bh_write_commit())
+    if (writeback_full())
+      break;
     BufferHead *bh = static_cast<BufferHead*>(
       bh_lru_dirty.lru_get_next_expire());
     if (!bh) break;
@@ -2504,7 +2531,8 @@ void ObjectCacher::flusher_entry()
       cutoff -= max_dirty_age;
       BufferHead *bh = 0;
       int max = MAX_FLUSH_UNDER_LOCK;
-      while ((bh = static_cast<BufferHead*>(bh_lru_dirty.
+      while (!writeback_full() &&
+	     (bh = static_cast<BufferHead*>(bh_lru_dirty.
 					    lru_get_next_expire())) != 0 &&
 	     bh->last_write <= cutoff &&
 	     max > 0) {
