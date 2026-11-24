@@ -1372,8 +1372,8 @@ void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid,
     finish_contexts(cct, ls, r);
 }
 
-void ObjectCacher::flush(ZTracer::Trace *trace, loff_t amount, int max_bhs,
-                         ceph::timespan min_age)
+bool ObjectCacher::flush(ZTracer::Trace *trace, loff_t amount, int max_bhs,
+                         ceph::timespan min_age, int batch)
 {
   ceph_assert(trace != nullptr);
   ceph_assert(ceph_mutex_is_locked(lock));
@@ -1391,7 +1391,11 @@ void ObjectCacher::flush(ZTracer::Trace *trace, loff_t amount, int max_bhs,
    */
   int64_t left = amount;
   int left_bhs = max_bhs;
+  int sent = 0;
   while ((amount == 0 && max_bhs == 0) || left > 0 || left_bhs > 0) {
+    // a batch sent: tell the caller to let go of the lock and come back
+    if (batch && sent >= batch)
+      return true;
     // the OSDs are behind: let rewrites land in the cache meanwhile (a
     // commit wakes us, see bh_write_commit())
     if (writeback_full())
@@ -1409,7 +1413,9 @@ void ObjectCacher::flush(ZTracer::Trace *trace, loff_t amount, int max_bhs,
       left_bhs--;
       bh_write(bh, *trace);
     }
+    ++sent;
   }
+  return false;
 }
 
 void ObjectCacher::trim()
@@ -2521,18 +2527,21 @@ void ObjectCacher::flusher_entry()
     if ((over > 0 || over_bhs > 0) &&
         !get_stat_nr_dirty_waiters() && !(group && group_totals().waiters))
       min_age = ceph::timespan(flush_min_age_ns.load(std::memory_order_relaxed));
+    bool more = false;   // flush() stopped at a batch, see set_flush_batch()
     if (actual > 0 && over > 0) {
       // flush some dirty pages
       ldout(cct, 10) << "flusher " << get_stat_dirty() << " dirty + "
 		     << get_stat_dirty_waiting() << " dirty_waiting > target "
 		     << target_dirty << ", flushing some dirty bhs" << dendl;
-      flush(&trace, over, 0, min_age);
+      more = flush(&trace, over, 0, min_age,
+                   flush_batch.load(std::memory_order_relaxed));
     } else if (over_bhs > 0) {
       ldout(cct, 10) << "flusher " << dirty_or_tx_bh.size() << " dirty/tx bh + "
                      << get_stat_nr_dirty_waiters() << " dirty_waiters > "
                      << "target dirty bh " << target_dirty_bh
                      << ", flushing some dirty bhs" << dendl;
-      flush(&trace, 0, over_bhs, min_age);
+      more = flush(&trace, 0, over_bhs, min_age,
+                   flush_batch.load(std::memory_order_relaxed));
     } else {
       // check tail of lru for old dirty items
       ceph::real_time cutoff = ceph::real_clock::now();
@@ -2561,6 +2570,16 @@ void ObjectCacher::flusher_entry()
 	gate_shut();
 	continue;
       }
+    }
+
+    if (more) {
+      // let the writers of this cache in between the batches
+      trace.event("backoff");
+      gate_open();
+      l.unlock();
+      l.lock();
+      gate_shut();
+      continue;
     }
 
     trace.event("finish");
