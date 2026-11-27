@@ -1,6 +1,9 @@
+import logging
 
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.cephfs.filesystem import ObjectNotFound
+
+log = logging.getLogger(__name__)
 
 class TestBacktrace(CephFSTestCase):
     def test_backtrace(self):
@@ -127,13 +130,33 @@ class TestBacktrace(CephFSTestCase):
         # on the deleted data pool without going read-only.
         self.mount_a.run_shell(["mkdir", "dir_y"])
 
-    def test_backtrace_old_pool_after_rename_and_replay(self):
+    def _mds_log(self, key):
+        return self.fs.mds_asok(['perf', 'dump', 'mds_log'])['mds_log'][key]
+
+    def _start_new_segment(self):
+        segadd = self._mds_log('segadd')
+        while self._mds_log('segadd') == segadd:
+            self.mount_a.run_shell(["touch", f"filler/f{next(self._filler)}"])
+
+    def _trim_journal_past(self, pos):
         """
-        That a file created in a non-default data pool still gets its
-        backtrace in the default data pool when it is renamed in a later
-        journal segment and the MDS fails over after the create's segment
-        is trimmed but before the rename's segment expires.
+        Start new segments until the MDS has trimmed the journal past pos.
+        The MDS expires the oldest segment only while it holds more than
+        mds_log_max_segments, so add one segment at a time, and only when
+        none is waiting to expire.
         """
+        max_segments = int(self.fs.mds_asok(
+            ['config', 'get', 'mds_log_max_segments'])['mds_log_max_segments'])
+        def trimmed():
+            log = self.fs.mds_asok(['perf', 'dump', 'mds_log'])['mds_log']
+            if log['expos'] > pos:
+                return True
+            if log['seg'] - log['segexg'] - log['segexd'] <= max_segments:
+                self._start_new_segment()
+            return False
+        self.wait_until_true(trimmed, timeout=120, period=1)
+
+    def _setup_old_pool(self):
         data_pool = self.fs.get_data_pool_name()
         extra_data_pool_name = data_pool + '_extra'
         extra_pool_id = self.fs.add_data_pool(extra_data_pool_name)
@@ -144,35 +167,62 @@ class TestBacktrace(CephFSTestCase):
         self.config_set('mds', 'mds_log_events_per_segment', 10)
         # 8 is the minimum since squid
         self.config_set('mds', 'mds_log_max_segments', 8)
+        self.wait_until_true(
+            lambda: int(self.fs.mds_asok(['config', 'get', 'mds_log_max_segments'])
+                        ['mds_log_max_segments']) == 8,
+            timeout=30, period=1)
+        self._filler = iter(range(10000))
+        return data_pool, extra_pool_id
 
-        def mds_log(key):
-            return self.fs.mds_asok(['perf', 'dump', 'mds_log'])['mds_log'][key]
+    def _old_pool_window(self, create, later_op, attempts=3):
+        """
+        Make a file with create(i), which returns its path, run later_op(i)
+        in a later journal segment, and trim the journal past the create,
+        so that only later_op's update is left for replay.  A request can
+        start more than one segment and the MDS then expires several at
+        once, so it may store the backtrace before the failover, leaving
+        nothing to test: check that the inode is still dirtyparent and
+        dirtypool, and start over with a new file if it is not.
 
-        filler = iter(range(1000))
-        def start_new_segment():
-            segadd = mds_log('segadd')
-            while mds_log('segadd') == segadd:
-                self.mount_a.run_shell(["touch", f"filler/f{next(filler)}"])
+        Return (i, ino) of the file to test.
+        """
+        for i in range(attempts):
+            self._start_new_segment()
+            path = create(i)
+            ino = self.mount_a.path_to_ino(path)
+            self.mount_a.run_shell(["sync"])
+            create_end = self._mds_log('wrpos')
 
-        start_new_segment()
-        self.mount_a.run_shell(["touch", "dir_x/file_x.tmp"])
-        file_ino = self.mount_a.path_to_ino("dir_x/file_x.tmp")
-        self.mount_a.run_shell(["sync"])
-        create_end = mds_log('wrpos')
+            self._start_new_segment()
+            later_op(i)
+            self.mount_a.run_shell(["sync"])
 
-        # The rename journals the backtrace update in a later segment
-        start_new_segment()
-        self.mount_a.run_shell(["mv", "dir_x/file_x.tmp", "dir_x/file_x"])
-        self.mount_a.run_shell(["sync"])
+            self._trim_journal_past(create_end)
+            states = self.fs.mds_asok(['dump', 'inode', hex(ino)])['states']
+            if 'dirtyparent' in states and 'dirtypool' in states:
+                return i, ino
+            log.info(f"backtrace of {ino:#x} stored before the failover "
+                     f"(states {states}), trying again with a new file")
+        self.fail(f"backtrace stored before the failover in all {attempts} attempts")
 
-        # Trim the create's segment, leaving the rename's for replay
-        start_new_segment()
-        self.wait_until_true(lambda: mds_log('expos') > create_end, timeout=60, period=1)
+    def test_backtrace_old_pool_after_rename_and_replay(self):
+        """
+        That a file created in a non-default data pool still gets its
+        backtrace in the default data pool when it is renamed in a later
+        journal segment and the MDS fails over after the create's segment
+        is trimmed but before the rename's segment expires.
+        """
+        data_pool, extra_pool_id = self._setup_old_pool()
 
-        # The backtrace must still be unwritten, or the test proves nothing
-        states = self.fs.mds_asok(['dump', 'inode', hex(file_ino)])['states']
-        self.assertIn('dirtyparent', states)
-        self.assertIn('dirtypool', states)
+        def create(i):
+            self.mount_a.run_shell(["touch", f"dir_x/file_{i}.tmp"])
+            return f"dir_x/file_{i}.tmp"
+
+        def rename(i):
+            # The rename journals the backtrace update in a later segment
+            self.mount_a.run_shell(["mv", f"dir_x/file_{i}.tmp", f"dir_x/file_{i}"])
+
+        i, file_ino = self._old_pool_window(create, rename)
 
         self.fs.rank_fail()
         self.fs.wait_for_daemons()
@@ -180,4 +230,4 @@ class TestBacktrace(CephFSTestCase):
 
         backtrace = self.fs.read_backtrace(file_ino, pool=data_pool)
         self.assertEqual(backtrace['pool'], extra_pool_id)
-        self.assertEqual(['file_x', 'dir_x'], [a['dname'] for a in backtrace['ancestors']])
+        self.assertEqual([f'file_{i}', 'dir_x'], [a['dname'] for a in backtrace['ancestors']])
