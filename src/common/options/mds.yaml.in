@@ -92,6 +92,24 @@ options:
   - mds
   flags:
   - runtime
+- name: mds_null_dentry_lease_duration
+  type: float
+  level: advanced
+  desc: lease length in seconds for a name that does not exist
+  long_desc: A client that looked up a missing name gets a lease on the null
+    dentry and answers further lookups of that name itself while the lease
+    lasts.  0 uses the normal dentry lease length (30 seconds).  A longer
+    lease saves the repeated lookups of names that are checked now and then
+    but never created (e.g. optional plugin or translation files) in
+    directories that other clients change.  The lease is revoked when the
+    name is created, but it keeps the null dentry in the MDS cache while it
+    lasts.
+  default: 0
+  services:
+  - mds
+  flags:
+  - runtime
+  with_legacy: true
 - name: mds_cache_release_free_interval
   type: secs
   level: dev

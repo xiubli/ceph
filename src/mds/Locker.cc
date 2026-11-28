@@ -4626,13 +4626,14 @@ void Locker::handle_client_lease(const cref_t<MClientLease> &m)
 	      << (!dn->lock.can_lease(client)?", revoking lease":"") << dendl;
       if (dn->lock.can_lease(client)) {
         auto reply = ceph::make_message<MClientLease>(*m);
-	int pool = 1;   // fixme.. do something smart!
-	reply->h.duration_ms = (int)(1000 * mdcache->client_lease_durations[pool]);
+	int pool = lease_pool(dn->get_linkage()->is_null());
+	double dur = lease_duration(pool);
+	reply->h.duration_ms = (int)(1000 * dur);
 	reply->h.seq = ++l->seq;
 	reply->clear_payload();
 
 	utime_t now = ceph_clock_now();
-	now += mdcache->client_lease_durations[pool];
+	now += dur;
 	mdcache->touch_client_lease(l, pool, now);
 
 	mds->send_message_client_counted(reply, m->get_connection());
@@ -4646,6 +4647,31 @@ void Locker::handle_client_lease(const cref_t<MClientLease> &m)
   }
 }
 
+
+/*
+ * Dentry leases go to pool 1 (client_lease_durations[1], 30 s).  A lease on
+ * a null dentry, i.e. a name that does not exist, goes to pool 2 when
+ * mds_null_dentry_lease_duration is set, and lasts that long.  A client then
+ * answers a repeated lookup of the missing name itself for that long, even
+ * when another client changes the directory and takes its Fs cap away.  The
+ * lease is still revoked when the name is created (the dentry lock changes),
+ * so the only cost is the null dentry staying pinned in the cache while the
+ * lease lasts.  Every lease in pool 2 then has the same length, which
+ * trim_client_leases() relies on.
+ */
+int Locker::lease_pool(bool null_dentry) const
+{
+  if (null_dentry && g_conf().get_val<double>("mds_null_dentry_lease_duration") > 0)
+    return 2;
+  return 1;
+}
+
+double Locker::lease_duration(int pool) const
+{
+  if (pool == 2)
+    return g_conf().get_val<double>("mds_null_dentry_lease_duration");
+  return mdcache->client_lease_durations[pool];
+}
 
 bool Locker::can_lease_dentries_in(CInode *diri, const MDRequestRef& mdr)
 {
@@ -4672,6 +4698,7 @@ void Locker::issue_client_lease(CDentry *dn, CInode *in, const MDRequestRef& mdr
   if (dir_leasable && dn->lock.can_lease(client)) {
     int mask = 0;
     CDentry::linkage_t *dnl = dn->get_linkage(client, mdr);
+    bool null_dn = !dnl->is_primary() && !dnl->is_remote();
     if (dnl->is_primary()) {
       ceph_assert(dnl->get_inode() == in);
       mask = CEPH_LEASE_PRIMARY_LINK;
@@ -4685,13 +4712,14 @@ void Locker::issue_client_lease(CDentry *dn, CInode *in, const MDRequestRef& mdr
     ClientLease *l = dn->add_client_lease(session);
     session->touch_lease(l);
     
-    int pool = 1;   // fixme.. do something smart!
-    now += mdcache->client_lease_durations[pool];
+    int pool = lease_pool(null_dn);
+    double dur = lease_duration(pool);
+    now += dur;
     mdcache->touch_client_lease(l, pool, now);
 
     LeaseStat lstat;
     lstat.mask = CEPH_LEASE_VALID | mask;
-    lstat.duration_ms = (uint32_t)(1000 * mdcache->client_lease_durations[pool]);
+    lstat.duration_ms = (uint32_t)(1000 * dur);
     lstat.seq = ++l->seq;
     lstat.alternate_name = std::string(dn->alternate_name);
     encode_lease(bl, session->info, lstat);

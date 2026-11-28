@@ -223,6 +223,9 @@ public:
   void issue_client_lease(CDentry *dn, CInode *in, const MDRequestRef &mdr, utime_t now, bufferlist &bl);
   /// whether the directory lets mdr's client hold dentry leases in it at all
   bool can_lease_dentries_in(CInode *diri, const MDRequestRef &mdr);
+  /// lease pool and length for a dentry lease (pool 2: null dentries, see Locker.cc)
+  int lease_pool(bool null_dentry) const;
+  double lease_duration(int pool) const;
   /// issue_client_lease() for a caller that has asked can_lease_dentries_in()
   /// once for all the dentries of a directory
   void issue_client_lease(CDentry *dn, CInode *in, const MDRequestRef &mdr, utime_t now,
